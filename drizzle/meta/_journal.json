@@ -1,0 +1,132 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1786471102481,
+      "tag": "0000_tiny_ozymandias",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1786902946448,
+      "tag": "0001_chilly_wendigo",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1786904011720,
+      "tag": "0002_mixed_swarm",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1786905007452,
+      "tag": "0003_conscious_vin_gonzales",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1787061909350,
+      "tag": "0004_mean_rage",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1787151072825,
+      "tag": "0005_spicy_rocket_racer",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1787151620785,
+      "tag": "0006_known_ulik",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1787154663998,
+      "tag": "0007_deep_dakota_north",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1787154731079,
+      "tag": "0008_first_champions",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1787251789248,
+      "tag": "0009_lively_gamma_corps",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1787407503548,
+      "tag": "0010_wild_red_ghost",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1787410319727,
+      "tag": "0011_slim_boomerang",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1787410393010,
+      "tag": "0012_massive_the_watchers",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1787616672534,
+      "tag": "0013_many_skullbuster",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "5",
+      "when": 1787756696342,
+      "tag": "0014_mean_peter_quill",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "5",
+      "when": 1787760266809,
+      "tag": "0015_friendly_galactus",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "5",
+      "when": 1787847162297,
+      "tag": "0016_public_fat_cobra",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1787848564119,
+      "tag": "0017_shiny_charles_xavier",
+      "breakpoints": true
+    }
+  ]
+}

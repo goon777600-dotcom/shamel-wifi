@@ -1,0 +1,1 @@
+ALTER TABLE `contacts` MODIFY COLUMN `type` enum('customer','market','grocery','supplier','employee','other') NOT NULL DEFAULT 'customer';

@@ -1,0 +1,1 @@
+ALTER TABLE `invoices` ADD `paidAmount` decimal(18,2) DEFAULT '0' NOT NULL;

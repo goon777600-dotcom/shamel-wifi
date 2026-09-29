@@ -1,0 +1,14 @@
+{
+  "id": "/api/app/",
+  "name": "الشامل لخدمات الإنترنت",
+  "short_name": "الشامل",
+  "description": "لوحة حسابات الشامل لخدمات الإنترنت الخاصة",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/api/app/",
+  "scope": "/api/app/",
+  "display": "standalone",
+  "background_color": "#edf6f4",
+  "theme_color": "#083f4c",
+  "icons": [{ "src": "/api/app/app-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
