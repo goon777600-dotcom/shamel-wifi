@@ -60,6 +60,9 @@ export function serveStatic(app: Express) {
     );
   }
 
+  app.get("/", (_req, res) => {
+    res.redirect(302, "/api/app/");
+  });
   app.use("/api/app", express.static(distPath));
   app.get("/api/app", (_req, res) => {
     res.redirect(308, "/api/app/");

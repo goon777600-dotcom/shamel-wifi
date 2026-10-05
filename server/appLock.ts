@@ -9,8 +9,8 @@ export const APP_LOCK_COOKIE_NAME = "shamel_app_lock";
 export const APP_LOCK_TOKEN_HEADER = "x-app-lock-token";
 const APP_LOCK_AUDIENCE = "shamel-app-lock";
 const APP_LOCK_DURATION_SECONDS = 60 * 60 * 12;
-const APP_LOCK_MAX_FAILED_ATTEMPTS = 5;
-const APP_LOCK_BLOCK_DURATION_MS = 5 * 60 * 1000;
+const APP_LOCK_MAX_FAILED_ATTEMPTS = 25;
+const APP_LOCK_BLOCK_DURATION_MS = 15 * 1000;
 const failedAttempts = new Map<string, { count: number; blockedUntil: number }>();
 
 function sameSecret(left: string, right: string) {

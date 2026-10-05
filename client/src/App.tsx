@@ -55,6 +55,11 @@ function Page({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
+  if (typeof window !== "undefined" && !window.location.pathname.startsWith("/api/app")) {
+    window.location.replace("/api/app/");
+    return null;
+  }
+
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light">
