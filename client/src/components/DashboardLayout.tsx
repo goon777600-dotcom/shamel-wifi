@@ -54,7 +54,7 @@ const menuItems = [
   { icon: Settings2, label: "الإعدادات", path: "/settings" },
 ];
 
-const logoUrl = "/api/app/manus-storage/al-shamel-logo_37b15ce0.jpeg";
+const logoUrl = "/api/app/app-icon.svg";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { loading, user } = useAuth();

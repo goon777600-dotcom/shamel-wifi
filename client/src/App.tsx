@@ -55,17 +55,24 @@ function Page({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
-  if (typeof window !== "undefined" && !window.location.pathname.startsWith("/api/app")) {
-    window.location.replace("/api/app/");
-    return null;
-  }
+  const isApiApp = typeof window !== "undefined" && window.location.pathname.startsWith("/api/app");
 
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light">
           <TooltipProvider>
             <Toaster />
-            <AppLockGate><WouterRouter base="/api/app"><AppRoutes /></WouterRouter></AppLockGate>
+            <AppLockGate>
+              {isApiApp ? (
+                <WouterRouter base="/api/app">
+                  <AppRoutes />
+                </WouterRouter>
+              ) : (
+                <WouterRouter>
+                  <AppRoutes />
+                </WouterRouter>
+              )}
+            </AppLockGate>
           </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

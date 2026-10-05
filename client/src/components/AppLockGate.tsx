@@ -6,7 +6,7 @@ import { KeyRound, Loader2, LockKeyhole, ShieldCheck } from "lucide-react";
 import { FormEvent, ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 
-const logoUrl = "/api/app/manus-storage/al-shamel-logo_37b15ce0.jpeg";
+const logoUrl = "/api/app/app-icon.svg";
 
 export default function AppLockGate({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<"checking" | "locked" | "unlocked">("checking");

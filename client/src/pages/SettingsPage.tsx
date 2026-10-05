@@ -7,7 +7,7 @@ import { BadgeCheck, Clock3, DatabaseBackup, Download, DownloadCloud, LockKeyhol
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-const logoUrl = "/api/app/manus-storage/al-shamel-logo_37b15ce0.jpeg";
+const logoUrl = "/api/app/app-icon.svg";
 
 export default function SettingsPage() {
   const backupsQuery = trpc.accounting.backups.useQuery();
