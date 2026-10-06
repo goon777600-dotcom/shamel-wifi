@@ -21,11 +21,15 @@ const ReceiptsPage = lazy(() => import("@/pages/ReceiptsPage"));
 const ReportsPage = lazy(() => import("@/pages/ReportsPage"));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
 const SubscriptionsPage = lazy(() => import("@/pages/SubscriptionsPage"));
+const WifiCardsPage = lazy(() => import("@/pages/WifiCardsPage"));
+const MikrotikSettingsPage = lazy(() => import("@/pages/MikrotikSettingsPage"));
 
 function AppRoutes() {
   return (
     <Switch>
       <Route path="/"><Page><AccountingDashboard /></Page></Route>
+      <Route path="/wifi-cards"><Page><WifiCardsPage /></Page></Route>
+      <Route path="/mikrotik-settings"><Page><MikrotikSettingsPage /></Page></Route>
       <Route path="/contacts/:contactId"><Page><ClientAccountPage /></Page></Route>
       <Route path="/contacts"><Page><ContactsPage /></Page></Route>
       <Route path="/invoices"><Page><InvoicesPage /></Page></Route>

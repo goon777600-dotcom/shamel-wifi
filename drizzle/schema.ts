@@ -589,6 +589,107 @@ export const backupSnapshots = mysqlTable(
   table => [index("backup_snapshots_created_idx").on(table.createdAt)],
 );
 
+export const networkRouters = mysqlTable(
+  "network_routers",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    name: varchar("name", { length: 120 }).notNull().default("موجّه الشامل الرئيسي"),
+    host: varchar("host", { length: 255 }).notNull().default("3.3.3.3"),
+    apiPort: int("apiPort").notNull().default(8728),
+    username: varchar("username", { length: 100 }).notNull().default("admin"),
+    password: varchar("password", { length: 255 }).notNull().default(""),
+    useTls: boolean("useTls").notNull().default(false),
+    mode: mysqlEnum("mode", ["usermanager_v6", "usermanager_v7", "hotspot"]).notNull().default("usermanager_v6"),
+    customer: varchar("customer", { length: 100 }).notNull().default("admin"),
+    isDefault: boolean("isDefault").notNull().default(true),
+    status: mysqlEnum("status", ["online", "offline", "error", "unknown"]).notNull().default("unknown"),
+    lastCheckedAt: timestamp("lastCheckedAt"),
+    lastError: text("lastError"),
+    systemIdentity: varchar("systemIdentity", { length: 120 }),
+    routerosVersion: varchar("routerosVersion", { length: 60 }),
+    boardName: varchar("boardName", { length: 120 }),
+    uptime: varchar("uptime", { length: 120 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [index("network_routers_status_idx").on(table.status)],
+);
+
+export const wifiCardProfiles = mysqlTable(
+  "wifi_card_profiles",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    name: varchar("name", { length: 160 }).notNull(),
+    price: decimal("price", { precision: 18, scale: 2 }).notNull(),
+    currencyCode: varchar("currencyCode", { length: 3 }).notNull().default("YER"),
+    timeLimit: varchar("timeLimit", { length: 60 }),
+    dataLimitBytes: decimal("dataLimitBytes", { precision: 18, scale: 0 }).notNull().default("0"),
+    dataLimitLabel: varchar("dataLimitLabel", { length: 60 }),
+    routerProfileName: varchar("routerProfileName", { length: 120 }),
+    notes: text("notes"),
+    isActive: boolean("isActive").notNull().default(true),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [index("wifi_card_profiles_active_idx").on(table.isActive)],
+);
+
+export const wifiCardBatches = mysqlTable(
+  "wifi_card_batches",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    batchNumber: varchar("batchNumber", { length: 50 }).notNull(),
+    routerId: int("routerId").references(() => networkRouters.id),
+    profileId: int("profileId").references(() => wifiCardProfiles.id),
+    profileName: varchar("profileName", { length: 160 }).notNull(),
+    quantity: int("quantity").notNull(),
+    unitPrice: decimal("unitPrice", { precision: 18, scale: 2 }).notNull(),
+    totalAmount: decimal("totalAmount", { precision: 18, scale: 2 }).notNull(),
+    currencyCode: varchar("currencyCode", { length: 3 }).notNull().default("YER"),
+    codeFormat: mysqlEnum("codeFormat", ["username_only", "username_password"]).notNull().default("username_only"),
+    codeLength: int("codeLength").notNull().default(6),
+    codeType: mysqlEnum("codeType", ["numbers", "alphanumeric"]).notNull().default("numbers"),
+    prefix: varchar("prefix", { length: 20 }).notNull().default(""),
+    status: mysqlEnum("status", ["ready", "synced", "partial_sync", "sync_failed"]).notNull().default("ready"),
+    syncError: text("syncError"),
+    notes: text("notes"),
+    createdByUserId: int("createdByUserId").references(() => users.id),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("wifi_card_batches_number_unique").on(table.batchNumber),
+    index("wifi_card_batches_created_idx").on(table.createdAt),
+  ],
+);
+
+export const wifiCards = mysqlTable(
+  "wifi_cards",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    batchId: int("batchId").notNull().references(() => wifiCardBatches.id),
+    routerId: int("routerId").references(() => networkRouters.id),
+    profileId: int("profileId").references(() => wifiCardProfiles.id),
+    username: varchar("username", { length: 100 }).notNull(),
+    password: varchar("password", { length: 100 }).notNull(),
+    price: decimal("price", { precision: 18, scale: 2 }).notNull(),
+    currencyCode: varchar("currencyCode", { length: 3 }).notNull().default("YER"),
+    profileName: varchar("profileName", { length: 160 }).notNull(),
+    timeLimit: varchar("timeLimit", { length: 60 }),
+    dataLimitLabel: varchar("dataLimitLabel", { length: 60 }),
+    status: mysqlEnum("status", ["available", "sold", "used", "disabled"]).notNull().default("available"),
+    syncedToRouter: boolean("syncedToRouter").notNull().default(false),
+    soldAt: timestamp("soldAt"),
+    soldToContactId: int("soldToContactId").references(() => contacts.id),
+    soldNotes: varchar("soldNotes", { length: 255 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("wifi_cards_batch_idx").on(table.batchId),
+    index("wifi_cards_username_idx").on(table.username),
+    index("wifi_cards_status_idx").on(table.status),
+  ],
+);
+
 export type Currency = typeof currencies.$inferSelect;
 export type CashBalance = typeof cashBalances.$inferSelect;
 export type AccountCategory = typeof accountCategories.$inferSelect;
@@ -608,3 +709,12 @@ export type CurrencyTransfer = typeof currencyTransfers.$inferSelect;
 export type CashMovement = typeof cashMovements.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type BackupSnapshot = typeof backupSnapshots.$inferSelect;
+export type NetworkRouter = typeof networkRouters.$inferSelect;
+export type InsertNetworkRouter = typeof networkRouters.$inferInsert;
+export type WifiCardProfile = typeof wifiCardProfiles.$inferSelect;
+export type InsertWifiCardProfile = typeof wifiCardProfiles.$inferInsert;
+export type WifiCardBatch = typeof wifiCardBatches.$inferSelect;
+export type InsertWifiCardBatch = typeof wifiCardBatches.$inferInsert;
+export type WifiCard = typeof wifiCards.$inferSelect;
+export type InsertWifiCard = typeof wifiCards.$inferInsert;
+

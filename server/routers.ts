@@ -59,6 +59,23 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, publicProcedure, router } from "./_core/trpc";
 import { createHeartbeatJob, updateHeartbeatJob } from "./_core/heartbeat";
 import { DAILY_BACKUP_CRON, DAILY_BACKUP_TIME_LABEL, getDailyBackupSchedule, saveDailyBackupSchedule, setDailyBackupEnabled } from "./dailyBackup";
+import {
+  deleteBatch,
+  deleteCard,
+  deleteCardProfile,
+  generateCardsBatch,
+  getDefaultRouter,
+  getRouter,
+  listBatches,
+  listCardProfiles,
+  listCards,
+  listRouters,
+  saveCardProfile,
+  saveRouter,
+  sellCard,
+  syncBatchToRouter,
+  testRouterConnection,
+} from "./wifiCards";
 
 export const CONTACT_TYPES = ["customer", "grocery", "supplier", "employee", "other"] as const;
 const contactTypeSchema = z.enum(CONTACT_TYPES);
@@ -454,6 +471,112 @@ export const appRouter = router({
       .input(z.object({ contactId: z.number().int().positive() }))
       .query(({ input }) => getContactStatement(input.contactId)),
   }),
+  wifiCards: router({
+    routers: adminProcedure.query(() => listRouters()),
+    getRouter: adminProcedure.input(z.object({ id: z.number().int().positive() })).query(({ input }) => getRouter(input.id)),
+    defaultRouter: adminProcedure.query(() => getDefaultRouter()),
+    saveRouter: adminProcedure
+      .input(
+        z.object({
+          id: z.number().int().positive().optional(),
+          name: z.string().trim().min(2).max(120),
+          host: z.string().trim().min(1).max(255),
+          apiPort: z.number().int().min(1).max(65535).default(8728),
+          username: z.string().trim().min(1).max(100),
+          password: z.string().max(255).optional(),
+          useTls: z.boolean().default(false),
+          mode: z.enum(["usermanager_v6", "usermanager_v7", "hotspot"]).default("usermanager_v6"),
+          customer: z.string().trim().max(100).default("admin"),
+          isDefault: z.boolean().default(true),
+        })
+      )
+      .mutation(({ ctx, input }) => saveRouter(ctx.user.id, input)),
+    testRouterConnection: adminProcedure
+      .input(
+        z.object({
+          id: z.number().int().positive().optional(),
+          host: z.string().trim().min(1).max(255),
+          port: z.number().int().min(1).max(65535).default(8728),
+          username: z.string().trim().min(1).max(100),
+          password: z.string().max(255).optional(),
+          useTls: z.boolean().default(false),
+        })
+      )
+      .mutation(({ input }) => testRouterConnection(input)),
+    profiles: adminProcedure.query(() => listCardProfiles()),
+    saveProfile: adminProcedure
+      .input(
+        z.object({
+          id: z.number().int().positive().optional(),
+          name: z.string().trim().min(2).max(160),
+          price: moneySchema,
+          currencyCode: currencyCodeSchema.default("YER"),
+          timeLimit: z.string().trim().max(60).optional(),
+          dataLimitBytes: z.string().max(30).optional(),
+          dataLimitLabel: z.string().trim().max(60).optional(),
+          routerProfileName: z.string().trim().max(120).optional(),
+          notes: z.string().trim().max(3000).optional(),
+        })
+      )
+      .mutation(({ input }) => saveCardProfile(input)),
+    deleteProfile: adminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(({ input }) => deleteCardProfile(input.id)),
+    generateCards: adminProcedure
+      .input(
+        z.object({
+          routerId: z.number().int().positive().optional(),
+          profileId: z.number().int().positive(),
+          quantity: z.number().int().min(1).max(500),
+          codeFormat: z.enum(["username_only", "username_password"]).default("username_only"),
+          codeLength: z.number().int().min(4).max(12).default(6),
+          codeType: z.enum(["numbers", "alphanumeric"]).default("numbers"),
+          prefix: z.string().trim().max(20).optional(),
+          notes: z.string().trim().max(1000).optional(),
+        })
+      )
+      .mutation(({ ctx, input }) => generateCardsBatch(ctx.user.id, input)),
+    batches: adminProcedure.query(() => listBatches()),
+    cards: adminProcedure
+      .input(
+        z
+          .object({
+            batchId: z.number().int().positive().optional(),
+            profileId: z.number().int().positive().optional(),
+            status: z.enum(["available", "sold", "used", "disabled"]).optional(),
+            search: z.string().optional(),
+            limit: z.number().int().min(1).max(500).default(100),
+            offset: z.number().int().min(0).default(0),
+          })
+          .optional()
+      )
+      .query(({ input }) => listCards(input)),
+    syncBatch: adminProcedure
+      .input(
+        z.object({
+          batchId: z.number().int().positive(),
+          routerId: z.number().int().positive().optional(),
+        })
+      )
+      .mutation(({ input }) => syncBatchToRouter(input.batchId, input.routerId)),
+    sellCard: adminProcedure
+      .input(
+        z.object({
+          cardId: z.number().int().positive(),
+          contactId: z.number().int().positive().optional(),
+          soldNotes: z.string().trim().max(255).optional(),
+          recordToCashBox: z.boolean().default(true),
+        })
+      )
+      .mutation(({ ctx, input }) => sellCard(ctx.user.id, input)),
+    deleteCard: adminProcedure
+      .input(z.object({ cardId: z.number().int().positive() }))
+      .mutation(({ input }) => deleteCard(input.cardId)),
+    deleteBatch: adminProcedure
+      .input(z.object({ batchId: z.number().int().positive() }))
+      .mutation(({ input }) => deleteBatch(input.batchId)),
+  }),
 });
 
 export type AppRouter = typeof appRouter;
+

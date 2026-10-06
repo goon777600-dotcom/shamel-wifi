@@ -32,6 +32,7 @@ import {
   Router,
   Settings2,
   Tags,
+  Ticket,
   UsersRound,
   Wifi,
   WalletCards,
@@ -42,6 +43,8 @@ import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "نظرة عامة", path: "/" },
+  { icon: Ticket, label: "كروت الواي فاي", path: "/wifi-cards" },
+  { icon: Router, label: "ربط الميكروتك", path: "/mikrotik-settings" },
   { icon: UsersRound, label: "العملاء والحسابات", path: "/contacts" },
   { icon: FileText, label: "فواتير المبيعات", path: "/invoices" },
   { icon: ReceiptText, label: "سندات القبض", path: "/receipts" },
