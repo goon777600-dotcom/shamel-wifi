@@ -16,6 +16,10 @@ describe("المصروفات القابلة للتعديل وتجاوز رصيد
     expect(source).toContain("getExpenseCategoryVisual");
     expect(source).toContain("border-amber-200");
     expect(source).toContain("border-cyan-200");
+    expect(source).toContain("border-indigo-200");
+    expect(source).toContain("border-teal-200");
+    expect(source).toContain("HeartHandshake");
+    expect(source).toContain("contactTypeLabel");
     expect(source).toContain("لا يوجد صرف في هذا الشهر");
     expect(source).toContain("تفاصيل مصروفات");
     expect(source).toContain("detailsCategoryId");

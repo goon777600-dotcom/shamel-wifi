@@ -82,6 +82,8 @@ const DEFAULT_ACCOUNT_CATEGORIES = [
   { name: "مصروفات تشغيلية", kind: "expense" as const },
   { name: "رواتب الموظفين", kind: "expense" as const },
   { name: "أصول ومعدات", kind: "asset" as const },
+  { name: "الصدقات والمساعدات", kind: "expense" as const },
+  { name: "إيجارات سنوية", kind: "expense" as const },
 ];
 
 function referenceNumber(prefix: string, id: number) {
@@ -358,6 +360,8 @@ export async function ensureAccountingDefaults() {
     { name: "بترول ومشاوير", kind: "expense" as const, accountCategoryId: categoryId("مصروفات تشغيلية") },
     { name: "رواتب", kind: "expense" as const, accountCategoryId: categoryId("رواتب الموظفين") },
     { name: "شراء أصل أو معدات", kind: "expense" as const, accountCategoryId: categoryId("أصول ومعدات") },
+    { name: "الصدقات والمساعدات", kind: "expense" as const, accountCategoryId: categoryId("الصدقات والمساعدات") ?? categoryId("مصروفات تشغيلية") },
+    { name: "الإيجارات السنوية", kind: "expense" as const, accountCategoryId: categoryId("إيجارات سنوية") ?? categoryId("مصروفات تشغيلية") },
     { name: "تحويل عملات", kind: "transfer" as const, accountCategoryId: null },
   ];
 

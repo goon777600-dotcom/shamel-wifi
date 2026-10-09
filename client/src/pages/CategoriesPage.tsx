@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
-import { ArrowLeftRight, Banknote, Building2, CarFront, CircleDollarSign, Droplets, Fuel, Landmark, Pencil, Plus, ReceiptText, ShoppingBasket, WalletCards, Wrench, Zap } from "lucide-react";
+import { ArrowLeftRight, Banknote, Building2, CarFront, CircleDollarSign, Droplets, Fuel, HeartHandshake, Landmark, Pencil, Plus, ReceiptText, ShoppingBasket, WalletCards, Wrench, Zap } from "lucide-react";
 import { FormEvent, ReactNode, useState } from "react";
 import { toast } from "sonner";
 
@@ -156,13 +156,16 @@ function CategoryIdentity({ name, kind, group }: { name: string; kind: AccountKi
       : normalized.includes("صيانة") ? { Icon: Wrench, tone: "bg-orange-50 text-orange-700 ring-orange-100" }
       : normalized.includes("كهرباء") ? { Icon: Zap, tone: "bg-yellow-50 text-yellow-700 ring-yellow-100" }
       : normalized.includes("إيجار") || normalized.includes("ايجار") ? { Icon: Building2, tone: "bg-indigo-50 text-indigo-700 ring-indigo-100" }
+      : normalized.includes("صدق") || normalized.includes("مساعد") || normalized.includes("تبرع") || normalized.includes("خير") ? { Icon: HeartHandshake, tone: "bg-teal-50 text-teal-700 ring-teal-100" }
       : normalized.includes("راتب") ? { Icon: WalletCards, tone: "bg-blue-50 text-blue-700 ring-blue-100" }
       : normalized.includes("قبض") ? { Icon: Banknote, tone: "bg-emerald-50 text-emerald-700 ring-emerald-100" }
       : normalized.includes("تحويل") ? { Icon: ArrowLeftRight, tone: "bg-sky-50 text-sky-700 ring-sky-100" }
       : normalized.includes("مبيع") || normalized.includes("اشتراك") ? { Icon: ShoppingBasket, tone: "bg-teal-50 text-teal-700 ring-teal-100" }
       : kind === "expense" ? { Icon: ReceiptText, tone: "bg-rose-50 text-rose-700 ring-rose-100" }
       : { Icon: CircleDollarSign, tone: "bg-slate-50 text-slate-700 ring-slate-100" }
-    : kind === "income" ? { Icon: CircleDollarSign, tone: "bg-emerald-50 text-emerald-700 ring-emerald-100" }
+    : normalized.includes("إيجار") || normalized.includes("ايجار") ? { Icon: Building2, tone: "bg-indigo-50 text-indigo-700 ring-indigo-100" }
+      : normalized.includes("صدق") || normalized.includes("مساعد") || normalized.includes("تبرع") || normalized.includes("خير") ? { Icon: HeartHandshake, tone: "bg-teal-50 text-teal-700 ring-teal-100" }
+      : kind === "income" ? { Icon: CircleDollarSign, tone: "bg-emerald-50 text-emerald-700 ring-emerald-100" }
       : kind === "expense" ? { Icon: ReceiptText, tone: "bg-rose-50 text-rose-700 ring-rose-100" }
       : kind === "asset" ? { Icon: Landmark, tone: "bg-blue-50 text-blue-700 ring-blue-100" }
       : kind === "liability" ? { Icon: WalletCards, tone: "bg-amber-50 text-amber-700 ring-amber-100" }
