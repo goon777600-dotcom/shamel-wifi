@@ -30,6 +30,7 @@ import { toast } from "sonner";
 
 export default function MikrotikSettingsPage() {
   const routersQuery = trpc.wifiCards.routers.useQuery();
+  const profilesQuery = trpc.wifiCards.profiles.useQuery();
   const utils = trpc.useUtils();
 
   const [routerId, setRouterId] = useState<number | undefined>(undefined);
@@ -42,6 +43,22 @@ export default function MikrotikSettingsPage() {
   const [customer, setCustomer] = useState("admin");
 
   const [testResult, setTestResult] = useState<any>(null);
+
+  // Profile Mapping states
+  const [profileMappings, setProfileMappings] = useState<Record<number, string>>({});
+  const [availableRouterProfiles, setAvailableRouterProfiles] = useState<string[]>([]);
+  const [isFetchingProfiles, setIsFetchingProfiles] = useState(false);
+
+  // Populate profile mappings from DB
+  useEffect(() => {
+    if (profilesQuery.data) {
+      const initialMap: Record<number, string> = {};
+      for (const p of profilesQuery.data) {
+        initialMap[p.id] = p.routerProfileName || "";
+      }
+      setProfileMappings(initialMap);
+    }
+  }, [profilesQuery.data]);
 
   // Populate form with first/default router if exists
   useEffect(() => {
@@ -73,6 +90,13 @@ export default function MikrotikSettingsPage() {
       if (result.ok) {
         toast.success(result.message);
         utils.wifiCards.routers.invalidate();
+        const detected = [
+          ...(result.userManagerProfiles || []),
+          ...(result.hotspotProfiles || []),
+        ].filter(Boolean);
+        if (detected.length > 0) {
+          setAvailableRouterProfiles(Array.from(new Set(detected)));
+        }
       } else {
         toast.error("فشل الاتصال بالميكروتك: " + result.message);
       }
@@ -82,6 +106,41 @@ export default function MikrotikSettingsPage() {
       toast.error(err.message);
     },
   });
+
+  const updateMappingsMutation = trpc.wifiCards.batchUpdateProfileMappings.useMutation({
+    onSuccess: res => {
+      utils.wifiCards.profiles.invalidate();
+      toast.success(res.message);
+    },
+    onError: err => toast.error(err.message),
+  });
+
+  const handleFetchProfiles = async () => {
+    setIsFetchingProfiles(true);
+    try {
+      const data = await utils.wifiCards.fetchRouterProfiles.fetch({ routerId });
+      if (data.ok) {
+        const names = data.profiles.map(p => p.name).filter(Boolean);
+        setAvailableRouterProfiles(Array.from(new Set(names)));
+        toast.success(data.message);
+      } else {
+        toast.error(data.message);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "تعذر جلب البروفايلات من الميكروتك");
+    } finally {
+      setIsFetchingProfiles(false);
+    }
+  };
+
+  const handleSaveMappings = () => {
+    if (!profilesQuery.data || profilesQuery.data.length === 0) return;
+    const mappings = profilesQuery.data.map(p => ({
+      profileId: p.id,
+      routerProfileName: (profileMappings[p.id] || "").trim(),
+    }));
+    updateMappingsMutation.mutate({ mappings });
+  };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -430,6 +489,132 @@ export default function MikrotikSettingsPage() {
           </SectionCard>
         </div>
       </div>
+
+      {/* Profile Mapping Section */}
+      <SectionCard
+        title="ربط بروفايلات الباقات مع الميكروتك (Profile Mapping)"
+        subtitle="حدد لكل باقة (مثلاً كرت 200 ريال) اسم البروفايل المطابق لها في الميكروتك. عند قيام الزبون أو الكاشير بشراء كرت أبو 200، يقوم الميكروتك بإنشاء كرت مباشر باسم مستخدم فقط بدون كلمة سر وتطبيق هذا البروفايل فوراً."
+      >
+        <div className="p-5 space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-[#f3f9f7] p-4 rounded-xl border border-[#d6ede4]">
+            <div className="flex items-center gap-3">
+              <div className="grid h-10 w-10 place-items-center rounded-lg bg-[#0a6372] text-white">
+                <Wifi className="h-5 w-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-[#083f4c] text-sm">
+                  البروفايلات المتوفرة في جهاز الميكروتك
+                </h4>
+                <p className="text-xs text-slate-600">
+                  {availableRouterProfiles.length > 0
+                    ? `تم اكتشاف البروفايلات التالية: ${availableRouterProfiles.join(", ")}`
+                    : "اضغط زر جلب البروفايلات لاكتشاف الأسماء المسجلة داخل راوتر الميكروتك تلقائياً."}
+                </p>
+              </div>
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleFetchProfiles}
+              disabled={isFetchingProfiles}
+              className="border-[#0a6372] text-[#0a6372] hover:bg-[#eff8f5]"
+            >
+              <RefreshCw
+                className={`ml-2 h-3.5 w-3.5 ${isFetchingProfiles ? "animate-spin" : ""}`}
+              />
+              {isFetchingProfiles ? "جارٍ الجلب..." : "جلب البروفايلات من الميكروتك"}
+            </Button>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-[#dce8e5]">
+            <table className="w-full text-right text-xs">
+              <thead className="bg-[#f8faf9] text-[#083f4c] font-bold border-b border-[#dce8e5]">
+                <tr>
+                  <th className="py-3 px-4">اسم الباقة في النظام</th>
+                  <th className="py-3 px-4">السعر</th>
+                  <th className="py-3 px-4">الصلاحية والبيانات</th>
+                  <th className="py-3 px-4">اسم البروفايل في الميكروتك (Profile Name)</th>
+                  <th className="py-3 px-4">طريقة الدخول</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#eef4f1]">
+                {profilesQuery.data && profilesQuery.data.length > 0 ? (
+                  profilesQuery.data.map(profile => (
+                    <tr key={profile.id} className="hover:bg-[#fbfdfc]">
+                      <td className="py-3.5 px-4 font-bold text-[#083f4c]">
+                        {profile.name}
+                      </td>
+                      <td className="py-3.5 px-4 font-mono font-bold text-emerald-700">
+                        {Number(profile.price).toLocaleString()} {profile.currencyCode}
+                      </td>
+                      <td className="py-3.5 px-4 text-slate-600">
+                        {profile.timeLimit || "-"} {profile.dataLimitLabel ? `| ${profile.dataLimitLabel}` : ""}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-2 max-w-xs">
+                          <Input
+                            list={`profiles-list-${profile.id}`}
+                            value={profileMappings[profile.id] ?? ""}
+                            onChange={e =>
+                              setProfileMappings(prev => ({
+                                ...prev,
+                                [profile.id]: e.target.value,
+                              }))
+                            }
+                            placeholder={
+                              profile.name.includes("200")
+                                ? "200"
+                                : profile.name.includes("500")
+                                ? "500"
+                                : profile.name.includes("1000")
+                                ? "1000"
+                                : "مثال: 200 أو u200"
+                            }
+                            className="font-mono text-xs h-8 bg-white"
+                          />
+                          <datalist id={`profiles-list-${profile.id}`}>
+                            {availableRouterProfiles.map(pName => (
+                              <option key={pName} value={pName} />
+                            ))}
+                          </datalist>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className="inline-flex items-center rounded-full bg-teal-50 px-2.5 py-1 text-[11px] font-semibold text-teal-800 border border-teal-200">
+                          اسم المستخدم فقط (بدون كلمة سر)
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="py-6 text-center text-slate-500">
+                      لا توجد باقات كروت مسجلة في النظام بعد.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+            <p className="text-xs text-slate-500">
+              💡 <b>ملاحظة:</b> يمكنك كتابة اسم البروفايل يدوياً تماماً كما هو مسجل في WinBox (مثال: <code className="bg-slate-100 px-1 py-0.5 rounded text-[#0a6372]">200</code> أو <code className="bg-slate-100 px-1 py-0.5 rounded text-[#0a6372]">profile-200</code>).
+            </p>
+
+            <Button
+              type="button"
+              onClick={handleSaveMappings}
+              disabled={updateMappingsMutation.isPending}
+              className="bg-[#0a6372] text-white font-bold hover:bg-[#084e5a]"
+            >
+              {updateMappingsMutation.isPending ? "جارٍ الحفظ..." : "حفظ ربط البروفايلات"}
+            </Button>
+          </div>
+        </div>
+      </SectionCard>
     </div>
   );
 }

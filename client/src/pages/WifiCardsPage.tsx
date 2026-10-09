@@ -34,11 +34,13 @@ import {
   RefreshCw,
   Router as RouterIcon,
   Search,
+  Share2,
   ShoppingCart,
   Tag,
   Ticket,
   Trash2,
   Wifi,
+  Zap,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
@@ -87,6 +89,15 @@ export default function WifiCardsPage() {
 
   // Print selection
   const [printBatchId, setPrintBatchId] = useState<number | undefined>(undefined);
+
+  // Instant Purchase states
+  const [instantConfirmDialogOpen, setInstantConfirmDialogOpen] = useState(false);
+  const [selectedInstantProfile, setSelectedInstantProfile] = useState<any>(null);
+  const [instantCustomerName, setInstantCustomerName] = useState("");
+  const [instantCustomerPhone, setInstantCustomerPhone] = useState("");
+  const [instantNotes, setInstantNotes] = useState("");
+  const [instantVoucherDialogOpen, setInstantVoucherDialogOpen] = useState(false);
+  const [createdInstantCard, setCreatedInstantCard] = useState<any>(null);
 
   // Mutations
   const generateMutation = trpc.wifiCards.generateCards.useMutation({
@@ -152,6 +163,46 @@ export default function WifiCardsPage() {
     },
     onError: err => toast.error(err.message),
   });
+
+  const purchaseInstantMutation = trpc.wifiCards.purchaseInstantCard.useMutation({
+    onSuccess: result => {
+      utils.wifiCards.cards.invalidate();
+      utils.wifiCards.batches.invalidate();
+      utils.accounting.dashboard.invalidate();
+      setCreatedInstantCard(result.card);
+      setInstantConfirmDialogOpen(false);
+      setInstantVoucherDialogOpen(true);
+      toast.success(result.message);
+    },
+    onError: err => toast.error(err.message),
+  });
+
+  const handleInitiateInstantBuy = (profile: any) => {
+    setSelectedInstantProfile(profile);
+    setInstantCustomerName("");
+    setInstantCustomerPhone("");
+    setInstantNotes("");
+    setInstantConfirmDialogOpen(true);
+  };
+
+  const handleConfirmInstantBuy = () => {
+    if (!selectedInstantProfile) return;
+    purchaseInstantMutation.mutate({
+      profileId: selectedInstantProfile.id,
+      customerName: instantCustomerName.trim() || undefined,
+      customerPhone: instantCustomerPhone.trim() || undefined,
+      notes: instantNotes.trim() || undefined,
+    });
+  };
+
+  const shareCardViaWhatsApp = (card: any, phone?: string) => {
+    const text = `🌟 شبكة الشامل للواي فاي 🌟\n\n💳 الباقة: ${card.profileName}\n💰 القيمة: ${Number(card.price).toLocaleString()} ${card.currencyCode}\n🔑 رمز الدخول: ${card.username}\n⚠️ تنبيه: أدخل الرمز في خانة (اسم المستخدم) فقط واترك كلمة المرور فارغة.\n${card.timeLimit ? `⏳ الصلاحية: ${card.timeLimit}\n` : ""}${card.dataLimitLabel ? `📊 البيانات: ${card.dataLimitLabel}\n` : ""}\nنتمنى لكم وقتاً ممتعاً مع شبكتنا!`;
+    const cleanPhone = (phone || "").replace(/[^0-9]/g, "");
+    const url = cleanPhone
+      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+    window.open(url, "_blank");
+  };
 
   // Calculate summaries
   const totalAvailable = useMemo(() => {
@@ -337,6 +388,83 @@ export default function WifiCardsPage() {
         </div>
       </div>
 
+      {/* Instant On-Demand MikroTik Card Buy Section */}
+      <div className="rounded-2xl border border-teal-200 bg-gradient-to-r from-teal-50/90 via-emerald-50/50 to-white p-5 shadow-sm">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-teal-100 pb-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="grid h-7 w-7 place-items-center rounded-lg bg-[#0a6372] text-white">
+                <Zap className="h-4 w-4" />
+              </span>
+              <h3 className="font-extrabold text-[#083f4c] text-base">
+                الشراء والتوليد الفوري المباشر من الميكروتك (اسم مستخدم فقط)
+              </h3>
+            </div>
+            <p className="text-xs text-slate-600 mt-1">
+              اضغط على باقة الكرت لتوليد كرت فوري داخل الميكروتك برمز دخول باسم مستخدم فقط (بدون كلمة مرور) وقيد المبلغ في الصندوق تلقائياً:
+            </p>
+          </div>
+
+          <Link href="/mikrotik-settings">
+            <Button variant="ghost" size="sm" className="text-xs text-[#0a6372] hover:bg-teal-100/50">
+              <RouterIcon className="ml-1 h-3.5 w-3.5" />
+              ربط البروفايلات
+            </Button>
+          </Link>
+        </div>
+
+        {/* Profiles Instant Purchase Cards */}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mt-4">
+          {profilesQuery.data && profilesQuery.data.length > 0 ? (
+            profilesQuery.data.map(profile => (
+              <div
+                key={profile.id}
+                className="group relative flex flex-col justify-between rounded-xl border border-teal-200/80 bg-white p-4 shadow-xs transition hover:border-[#0a6372] hover:shadow-md"
+              >
+                <div>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h4 className="font-extrabold text-[#083f4c] text-base">
+                        {profile.name}
+                      </h4>
+                      <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+                        {profile.timeLimit && <span>⏳ {profile.timeLimit}</span>}
+                        {profile.dataLimitLabel && <span>📊 {profile.dataLimitLabel}</span>}
+                      </div>
+                    </div>
+                    <span className="rounded-lg bg-emerald-50 px-2.5 py-1 font-mono text-sm font-extrabold text-emerald-700 border border-emerald-200">
+                      {Number(profile.price).toLocaleString()} {profile.currencyCode}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 flex items-center gap-2 text-[11px] text-slate-500">
+                    <span className="inline-block h-2 w-2 rounded-full bg-teal-500" />
+                    <span>بروفايل الميكروتك: </span>
+                    <span className="font-mono font-bold text-[#0a6372]">
+                      {profile.routerProfileName || (profile.name.includes("200") ? "200" : profile.name.includes("500") ? "500" : "1000")}
+                    </span>
+                    <span className="text-slate-400">· بدون كلمة سر</span>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={() => handleInitiateInstantBuy(profile)}
+                  disabled={purchaseInstantMutation.isPending}
+                  className="mt-4 w-full bg-[#0a6372] font-bold text-white hover:bg-[#084e5a] shadow-xs"
+                >
+                  <Zap className="ml-1.5 h-4 w-4 text-amber-300" />
+                  شراء وتوليد كرت {profile.name} فوراً
+                </Button>
+              </div>
+            ))
+          ) : (
+            <div className="col-span-full py-4 text-center text-xs text-slate-500">
+              لا توجد باقات كروت مضافة. أضف باقة للبدء بالشراء الفوري.
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Main Tabs */}
       <Tabs defaultValue="cards" className="w-full">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-[#dce8e5] pb-3">
@@ -492,7 +620,11 @@ export default function WifiCardsPage() {
                           {card.username}
                         </td>
                         <td className="p-3.5 font-mono text-slate-600">
-                          {card.password === card.username ? (
+                          {!card.password || card.password === "" ? (
+                            <span className="inline-block text-[11px] font-semibold text-teal-800 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
+                              اسم المستخدم فقط (بدون كلمة سر)
+                            </span>
+                          ) : card.password === card.username ? (
                             <span className="text-xs text-slate-400">نفس الرمز</span>
                           ) : (
                             card.password
@@ -966,16 +1098,24 @@ export default function WifiCardsPage() {
                   <p className="font-mono text-lg font-black text-[#083f4c] tracking-widest my-0.5">
                     {card.username}
                   </p>
-                  {card.password !== card.username && (
+                  {card.password && card.password !== "" && card.password !== card.username ? (
                     <p className="text-[10px] text-slate-600 font-mono">
                       كلمة السر: <b>{card.password}</b>
+                    </p>
+                  ) : (
+                    <p className="text-[9px] text-teal-700 font-semibold mt-0.5">
+                      (اسم المستخدم فقط - بدون كلمة مرور)
                     </p>
                   )}
                 </div>
 
                 {/* Footer instructions */}
                 <div className="pt-1 text-[9px] text-slate-500 border-t border-slate-100">
-                  <p>اتصل بالواي فاي ثم افتح المتصفح وأدخل الرمز</p>
+                  <p>
+                    {!card.password || card.password === "" || card.password === card.username
+                      ? "أدخل الرمز في خانة اسم المستخدم فقط واترك كلمة السر فارغة"
+                      : "اتصل بالواي فاي ثم افتح المتصفح وأدخل الرمز"}
+                  </p>
                 </div>
               </div>
             ))}
@@ -1087,6 +1227,210 @@ export default function WifiCardsPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ---------------------------------------------------- */}
+      {/* Dialog: Confirm Instant Purchase */}
+      {/* ---------------------------------------------------- */}
+      <Dialog open={instantConfirmDialogOpen} onOpenChange={setInstantConfirmDialogOpen}>
+        <DialogContent className="max-w-md text-right">
+          <DialogHeader className="text-right">
+            <DialogTitle className="text-lg font-extrabold text-[#083f4c]">
+              تأكيد شراء وتوليد {selectedInstantProfile?.name}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              سيقوم النظام بإنشاء كرت مباشر داخل الميكروتك باسم مستخدم فقط وتسجيل العملية في الصندوق.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedInstantProfile && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-xl bg-[#f4faf8] border border-[#d6ede4] p-3 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-[#083f4c]">قيمة الكرت:</span>
+                  <span className="font-mono text-base font-extrabold text-emerald-700">
+                    {Number(selectedInstantProfile.price).toLocaleString()} {selectedInstantProfile.currencyCode}
+                  </span>
+                </div>
+                <div className="mt-2 flex items-center justify-between text-slate-600">
+                  <span>بروفايل الميكروتك:</span>
+                  <span className="font-mono font-bold text-[#0a6372]">
+                    {selectedInstantProfile.routerProfileName || (selectedInstantProfile.name.includes("200") ? "200" : selectedInstantProfile.name.includes("500") ? "500" : "1000")}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center justify-between text-slate-600">
+                  <span>نوع تسجيل الدخول:</span>
+                  <span className="font-bold text-teal-800">اسم المستخدم فقط (بدون كلمة سر)</span>
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-xs font-bold text-[#083f4c]">اسم العميل (اختياري)</Label>
+                <Input
+                  value={instantCustomerName}
+                  onChange={e => setInstantCustomerName(e.target.value)}
+                  placeholder="مثال: أحمد الصعيدي / زبون بقالة"
+                  className="mt-1.5"
+                />
+              </div>
+
+              <div>
+                <Label className="text-xs font-bold text-[#083f4c]">رقم واتساب العميل (اختياري - للإرسال المباشر)</Label>
+                <Input
+                  value={instantCustomerPhone}
+                  onChange={e => setInstantCustomerPhone(e.target.value)}
+                  placeholder="77XXXXXXX"
+                  className="mt-1.5 font-mono text-left dir-ltr"
+                />
+              </div>
+
+              <div>
+                <Label className="text-xs font-bold text-[#083f4c]">ملاحظات (اختياري)</Label>
+                <Input
+                  value={instantNotes}
+                  onChange={e => setInstantNotes(e.target.value)}
+                  placeholder="ملاحظات بيع"
+                  className="mt-1.5"
+                />
+              </div>
+
+              <DialogFooter className="pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setInstantConfirmDialogOpen(false)}
+                  className="border-slate-300"
+                >
+                  إلغاء
+                </Button>
+                <Button
+                  onClick={handleConfirmInstantBuy}
+                  disabled={purchaseInstantMutation.isPending}
+                  className="bg-[#0a6372] font-bold text-white hover:bg-[#084e5a]"
+                >
+                  <Zap className={`ml-1.5 h-4 w-4 text-amber-300 ${purchaseInstantMutation.isPending ? "animate-spin" : ""}`} />
+                  {purchaseInstantMutation.isPending ? "جارٍ الإنشاء في الميكروتك..." : "تأكيد وتوليد الكرت الآن"}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ---------------------------------------------------- */}
+      {/* Dialog: Instant Card Voucher Created */}
+      {/* ---------------------------------------------------- */}
+      <Dialog open={instantVoucherDialogOpen} onOpenChange={setInstantVoucherDialogOpen}>
+        <DialogContent className="max-w-md text-right">
+          <DialogHeader className="text-right">
+            <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-emerald-100 text-emerald-600 mb-2">
+              <CheckCircle2 className="h-7 w-7" />
+            </div>
+            <DialogTitle className="text-center text-xl font-extrabold text-[#083f4c]">
+              تم توليد كرت الواي فاي في الميكروتك بنجاح!
+            </DialogTitle>
+            <DialogDescription className="text-center text-xs text-slate-500">
+              تم إنشاء المستخدم مباشرة في الميكروتك وقيد المبلغ في الصندوق المحاسبي.
+            </DialogDescription>
+          </DialogHeader>
+
+          {createdInstantCard && (
+            <div className="space-y-4 py-2">
+              {/* Voucher Ticket UI */}
+              <div className="relative rounded-2xl border-2 border-dashed border-[#0a6372] bg-gradient-to-b from-[#f8fdfb] to-white p-5 text-center shadow-sm">
+                <div className="border-b border-[#0a6372]/20 pb-2">
+                  <h3 className="text-sm font-black text-[#083f4c]">شبكة الشامل للواي فاي</h3>
+                  <p className="text-[11px] text-slate-500">يافع الصعيد · خدمات الإنترنت السريع</p>
+                </div>
+
+                <div className="my-3 flex items-center justify-between px-2">
+                  <span className="text-xs font-bold text-slate-600">
+                    الباقة: <b>{createdInstantCard.profileName}</b>
+                  </span>
+                  <span className="rounded-full bg-[#0a6372] px-3 py-0.5 text-xs font-extrabold text-white">
+                    {Number(createdInstantCard.price).toLocaleString()} {createdInstantCard.currencyCode}
+                  </span>
+                </div>
+
+                {/* Big Voucher PIN */}
+                <div className="my-3 rounded-xl bg-slate-900 py-3 px-4 text-center text-white shadow-inner">
+                  <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">
+                    رمز الكرت (اسم المستخدم)
+                  </p>
+                  <p className="font-mono text-3xl font-black tracking-widest text-amber-300 my-1 select-all">
+                    {createdInstantCard.username}
+                  </p>
+                  <p className="text-[10px] text-slate-300">
+                    🔒 اسم المستخدم فقط · بدون كلمة سر
+                  </p>
+                </div>
+
+                {/* Login instructions */}
+                <div className="rounded-lg bg-teal-50 border border-teal-200 p-2 text-center text-xs text-teal-900">
+                  <p className="font-bold">طريقة تسجيل الدخول بالشبكة:</p>
+                  <p className="text-[11px] mt-0.5 text-teal-800">
+                    اتصل بشبكة الواي فاي، ثم اكتب <b>{createdInstantCard.username}</b> في خانة اسم المستخدم فقط، واترك كلمة السر فارغة.
+                  </p>
+                </div>
+
+                {(createdInstantCard.timeLimit || createdInstantCard.dataLimitLabel) && (
+                  <div className="mt-3 flex items-center justify-center gap-3 text-[11px] text-slate-500 border-t border-slate-100 pt-2">
+                    {createdInstantCard.timeLimit && <span>⏳ الصلاحية: {createdInstantCard.timeLimit}</span>}
+                    {createdInstantCard.dataLimitLabel && <span>📊 الرصيد: {createdInstantCard.dataLimitLabel}</span>}
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    navigator.clipboard.writeText(createdInstantCard.username);
+                    toast.success("تم نسخ رمز الكرت بنجاح!");
+                  }}
+                  className="w-full border-slate-300"
+                >
+                  <Copy className="ml-1.5 h-4 w-4" />
+                  نسخ رمز الكرت
+                </Button>
+
+                <Button
+                  onClick={() => shareCardViaWhatsApp(createdInstantCard, instantCustomerPhone)}
+                  className="w-full bg-[#25D366] text-white hover:bg-[#1EBE5D] font-bold"
+                >
+                  <Share2 className="ml-1.5 h-4 w-4" />
+                  إرسال عبر واتساب
+                </Button>
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setInstantVoucherDialogOpen(false);
+                    setPrintBatchId(createdInstantCard.batchId);
+                    setPrintDialogOpen(true);
+                  }}
+                  className="text-xs text-[#0a6372]"
+                >
+                  <Printer className="ml-1 h-3.5 w-3.5" />
+                  طباعة الكرت أو إيصال حراري
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setInstantVoucherDialogOpen(false)}
+                  className="text-xs"
+                >
+                  إغلاق
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

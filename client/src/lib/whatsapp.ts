@@ -77,3 +77,46 @@ export function individualSubscriptionFinancialWhatsAppMessage(
     { subscription_action: actionLabel, subscription_name: details.description, amount: details.amount, currency: details.currencyCode, due_amount: details.dueAmount ?? "" },
   );
 }
+
+export function individualSubscriptionReminderWhatsAppMessage(
+  customerName: string,
+  dueAmount: string,
+  currencyCode: string,
+  template?: string | null,
+) {
+  return message(
+    template,
+    customerName,
+    `تذكير لطيف بسداد اشتراك الإنترنت.\nالرصيد المتبقي المستحق على حسابكم: ${dueAmount} ${currencyCode}.\nيرجى التكرم بالسداد في أقرب وقت. نسعد بخدمتكم دائماً.`,
+    {
+      subscription_action: "تذكير بالسداد",
+      due_amount: dueAmount,
+      currency: currencyCode,
+    },
+  );
+}
+
+export function individualSubscriptionStatementWhatsAppMessage(
+  customerName: string,
+  summary: {
+    totalCharges: string;
+    totalPaid: string;
+    totalDiscount: string;
+    dueAmount: string;
+    currencyCode: string;
+  },
+  template?: string | null,
+) {
+  return message(
+    template,
+    customerName,
+    `ملخص كشف حساب اشتراككم:\n- إجمالي الاشتراكات: ${summary.totalCharges} ${summary.currencyCode}\n- إجمالي المسدد: ${summary.totalPaid} ${summary.currencyCode}\n- إجمالي الخصم: ${summary.totalDiscount} ${summary.currencyCode}\n- الرصيد المتبقي المستحق: ${summary.dueAmount} ${summary.currencyCode}\nشاكرين لكم حسن التعامل.`,
+    {
+      subscription_action: "كشف حساب",
+      amount: summary.totalCharges,
+      due_amount: summary.dueAmount,
+      currency: summary.currencyCode,
+    },
+  );
+}
+

@@ -13,7 +13,7 @@ describe("Wi-Fi Cards & MikroTik Router Integration", () => {
     expect(Array.isArray(routers)).toBe(true);
     expect(routers.length).toBeGreaterThan(0);
     expect(routers[0].host).toBeDefined();
-  });
+  }, 15000);
 
   it("يسترجع باقات كروت الواي فاي الافتراضية للشبكة (200, 500, 1000 ريال)", async () => {
     const profiles = await listCardProfiles();

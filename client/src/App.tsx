@@ -3,7 +3,7 @@ import AppLockGate from "@/components/AppLockGate";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Router as WouterRouter, Switch } from "wouter";
+import { Redirect, Route, Router as WouterRouter, Switch } from "wouter";
 import { lazy, Suspense } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -20,16 +20,13 @@ const IndividualSubscriptionsPage = lazy(() => import("@/pages/IndividualSubscri
 const ReceiptsPage = lazy(() => import("@/pages/ReceiptsPage"));
 const ReportsPage = lazy(() => import("@/pages/ReportsPage"));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
-const SubscriptionsPage = lazy(() => import("@/pages/SubscriptionsPage"));
-const WifiCardsPage = lazy(() => import("@/pages/WifiCardsPage"));
-const MikrotikSettingsPage = lazy(() => import("@/pages/MikrotikSettingsPage"));
 
 function AppRoutes() {
   return (
     <Switch>
       <Route path="/"><Page><AccountingDashboard /></Page></Route>
-      <Route path="/wifi-cards"><Page><WifiCardsPage /></Page></Route>
-      <Route path="/mikrotik-settings"><Page><MikrotikSettingsPage /></Page></Route>
+      <Route path="/wifi-cards"><Redirect to="/" /></Route>
+      <Route path="/mikrotik-settings"><Redirect to="/" /></Route>
       <Route path="/contacts/:contactId"><Page><ClientAccountPage /></Page></Route>
       <Route path="/contacts"><Page><ContactsPage /></Page></Route>
       <Route path="/invoices"><Page><InvoicesPage /></Page></Route>
@@ -38,7 +35,7 @@ function AppRoutes() {
       <Route path="/cash"><Page><CashPage /></Page></Route>
       <Route path="/individual-subscriptions/:accountId"><Page><IndividualSubscriptionAccountPage /></Page></Route>
       <Route path="/individual-subscriptions"><Page><IndividualSubscriptionsPage /></Page></Route>
-      <Route path="/subscriptions"><Page><SubscriptionsPage /></Page></Route>
+      <Route path="/subscriptions"><Redirect to="/individual-subscriptions" /></Route>
       <Route path="/reports"><Page><ReportsPage /></Page></Route>
       <Route path="/categories"><Page><CategoriesPage /></Page></Route>
       <Route path="/settings"><Page><SettingsPage /></Page></Route>

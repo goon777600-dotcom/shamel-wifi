@@ -365,7 +365,7 @@ export async function generateCardsBatch(
     if (!generatedCodes.has(code)) {
       generatedCodes.add(code);
       if (codeFormat === "username_only") {
-        cardItems.push({ username: code, password: code });
+        cardItems.push({ username: code, password: "" });
       } else {
         const pass = generateRandomCode(codeLength, codeType);
         cardItems.push({ username: code, password: pass });
@@ -702,4 +702,279 @@ export async function deleteBatch(batchId: number): Promise<void> {
   if (!db) return;
   await db.delete(wifiCards).where(eq(wifiCards.batchId, batchId));
   await db.delete(wifiCardBatches).where(eq(wifiCardBatches.id, batchId));
+}
+
+// ----------------------------------------------------
+// Router Profiles Fetching & Profile Mapping
+// ----------------------------------------------------
+export async function fetchRouterProfiles(routerId?: number): Promise<{
+  ok: boolean;
+  message: string;
+  mode?: "usermanager_v6" | "usermanager_v7" | "hotspot";
+  profiles: Array<{ name: string; validity?: string; price?: string }>;
+}> {
+  const router = routerId ? await getRouter(routerId) : await getDefaultRouter();
+  if (!router) {
+    return {
+      ok: false,
+      message: "لم يتم العثور على أي موجّه مسجّل في النظام",
+      profiles: [],
+    };
+  }
+
+  const client = new RouterosClient({
+    host: router.host,
+    port: router.apiPort,
+    user: router.username,
+    password: router.password || "",
+    useTls: router.useTls,
+    timeoutMs: 4000,
+  });
+
+  try {
+    await client.connect();
+    const result = await client.getAllAvailableProfiles();
+    client.destroy();
+
+    return {
+      ok: true,
+      message: `تم جلب ${result.profiles.length} بروفايل من الميكروتك (${router.host}) بنجاح`,
+      mode: result.mode,
+      profiles: result.profiles,
+    };
+  } catch (err: any) {
+    client.destroy();
+    return {
+      ok: false,
+      message: `تعذر جلب البروفايلات من الميكروتك (${router.host}): ${err.message}`,
+      profiles: [],
+    };
+  }
+}
+
+export async function batchUpdateProfileMappings(
+  mappings: Array<{ profileId: number; routerProfileName: string }>
+): Promise<{ success: boolean; message: string }> {
+  const db = await getDb();
+  if (!db) throw new Error("قاعدة البيانات غير متاحة");
+
+  for (const m of mappings) {
+    await db
+      .update(wifiCardProfiles)
+      .set({ routerProfileName: m.routerProfileName || null })
+      .where(eq(wifiCardProfiles.id, m.profileId));
+  }
+
+  return {
+    success: true,
+    message: `تم تحديث ربط البروفايلات لـ ${mappings.length} باقة بنجاح`,
+  };
+}
+
+// ----------------------------------------------------
+// Instant On-Demand Card Purchase
+// ----------------------------------------------------
+export async function purchaseInstantCard(
+  userId: number,
+  input: {
+    profileId: number;
+    routerId?: number;
+    customerName?: string;
+    customerPhone?: string;
+    notes?: string;
+  }
+): Promise<{
+  card: WifiCard;
+  routerName?: string;
+  routerProfile?: string;
+  message: string;
+}> {
+  const db = await getDb();
+  if (!db) throw new Error("قاعدة البيانات غير متاحة");
+
+  const [profile] = await db
+    .select()
+    .from(wifiCardProfiles)
+    .where(eq(wifiCardProfiles.id, input.profileId))
+    .limit(1);
+  if (!profile) throw new Error("الباقة المحددة غير موجودة");
+
+  const router = input.routerId ? await getRouter(input.routerId) : await getDefaultRouter();
+
+  // Generate unique 6-digit numeric username
+  let username = "";
+  let attempts = 0;
+  while (attempts < 10) {
+    const candidate = generateRandomCode(6, "numbers");
+    const [existing] = await db
+      .select({ id: wifiCards.id })
+      .from(wifiCards)
+      .where(eq(wifiCards.username, candidate))
+      .limit(1);
+    if (!existing) {
+      username = candidate;
+      break;
+    }
+    attempts++;
+  }
+  if (!username) {
+    username = `${Math.floor(100000 + Math.random() * 900000)}`;
+  }
+
+  // Target RouterOS profile name (e.g. "200" or profile mapped in settings)
+  const targetRouterProfile = profile.routerProfileName || undefined;
+
+  // 1. Connect and create on MikroTik
+  let syncedToRouter = false;
+
+  if (router) {
+    const client = new RouterosClient({
+      host: router.host,
+      port: router.apiPort,
+      user: router.username,
+      password: router.password || "",
+      useTls: router.useTls,
+      timeoutMs: 4500,
+    });
+
+    try {
+      await client.connect();
+      const mode = router.mode;
+
+      if (mode === "usermanager_v6") {
+        await client.addUserManagerCard(
+          "v6",
+          {
+            username,
+            password: "",
+            profileName: targetRouterProfile,
+            comment: `Instant Buy - ${profile.name}`,
+          },
+          router.customer || "admin"
+        );
+      } else if (mode === "usermanager_v7") {
+        await client.addUserManagerCard("v7", {
+          username,
+          password: "",
+          profileName: targetRouterProfile,
+          comment: `Instant Buy - ${profile.name}`,
+        });
+      } else {
+        // Hotspot mode
+        await client.addHotspotCard({
+          username,
+          password: "",
+          profileName: targetRouterProfile,
+          timeLimit: profile.timeLimit || undefined,
+          dataLimitBytes: profile.dataLimitBytes ? Number(profile.dataLimitBytes) : undefined,
+          comment: `Instant Buy - ${profile.name}`,
+        });
+      }
+
+      client.destroy();
+      syncedToRouter = true;
+    } catch (routerErr: any) {
+      client.destroy();
+      throw new Error(
+        `تعذر إنشاء الكرت على الميكروتك (${router.host}): ${routerErr.message}. تأكد من تفعيل منفذ API (/ip service enable api) وتطابق اسم البروفايل.`
+      );
+    }
+  }
+
+  // 2. Find or create instant sales batch
+  let [instantBatch] = await db
+    .select()
+    .from(wifiCardBatches)
+    .where(eq(wifiCardBatches.batchNumber, "B-INSTANT-DIRECT"))
+    .limit(1);
+
+  if (!instantBatch) {
+    const [batchInsert] = await db.insert(wifiCardBatches).values({
+      batchNumber: "B-INSTANT-DIRECT",
+      routerId: router?.id || null,
+      profileId: profile.id,
+      profileName: "المبيعات الفورية المباشرة",
+      quantity: 0,
+      unitPrice: profile.price,
+      totalAmount: "0.00",
+      currencyCode: profile.currencyCode,
+      codeFormat: "username_only",
+      codeLength: 6,
+      codeType: "numbers",
+      prefix: "",
+      status: "synced",
+      notes: "كروت مولدة تلقائياً عند الشراء الفوري من الميكروتك مباشرة",
+      createdByUserId: userId,
+    });
+    const batchId = (batchInsert as any).insertId;
+    [instantBatch] = await db.select().from(wifiCardBatches).where(eq(wifiCardBatches.id, batchId));
+  }
+
+  // 3. Save card in DB as sold
+  const now = new Date();
+  const soldNotesText = input.notes
+    ? `${input.notes} | عميل: ${input.customerName || "زبون شبكة"}`
+    : `شراء فوري مباشر: ${profile.name}${input.customerName ? ` للعميل ${input.customerName}` : ""}${input.customerPhone ? ` (${input.customerPhone})` : ""}`;
+
+  const [cardInsert] = await db.insert(wifiCards).values({
+    batchId: instantBatch.id,
+    routerId: router?.id || null,
+    profileId: profile.id,
+    username,
+    password: "", // Username-only voucher: blank password
+    price: profile.price,
+    currencyCode: profile.currencyCode,
+    profileName: profile.name,
+    timeLimit: profile.timeLimit,
+    dataLimitLabel: profile.dataLimitLabel,
+    status: "sold",
+    syncedToRouter: syncedToRouter,
+    soldAt: now,
+    soldNotes: soldNotesText,
+  });
+
+  const cardId = (cardInsert as any).insertId;
+
+  // Update batch counter
+  await db
+    .update(wifiCardBatches)
+    .set({
+      quantity: sql`quantity + 1`,
+      totalAmount: sql`totalAmount + ${profile.price}`,
+    })
+    .where(eq(wifiCardBatches.id, instantBatch.id));
+
+  // 4. Record to cash box and movements
+  try {
+    const amount = profile.price;
+    const currency = profile.currencyCode;
+
+    await db.execute(
+      sql`UPDATE cash_balances SET balance = balance + ${amount} WHERE currencyCode = ${currency}`
+    );
+
+    await db.insert(cashMovements).values({
+      direction: "in",
+      type: "cash_invoice",
+      currencyCode: currency,
+      amount,
+      occurredAt: now,
+      sourceType: "wifi_card",
+      sourceId: cardId,
+      description: `مبيعات كرت واي فاي فوري: ${username} (${profile.name})`,
+      notes: soldNotesText,
+      createdByUserId: userId,
+    });
+  } catch (cashErr: any) {
+    console.warn("Could not register cash movement for instant sale:", cashErr.message);
+  }
+
+  const [createdCard] = await db.select().from(wifiCards).where(eq(wifiCards.id, cardId));
+
+  return {
+    card: createdCard,
+    routerName: router?.name,
+    routerProfile: targetRouterProfile,
+    message: `تم إنشاء كرت ${profile.name} برمز [${username}] في الميكروتك بنجاح وتسجيل عملية البيع في الصندوق!`,
+  };
 }

@@ -43,15 +43,12 @@ import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "نظرة عامة", path: "/" },
-  { icon: Ticket, label: "كروت الواي فاي", path: "/wifi-cards" },
-  { icon: Router, label: "ربط الميكروتك", path: "/mikrotik-settings" },
   { icon: UsersRound, label: "العملاء والحسابات", path: "/contacts" },
   { icon: FileText, label: "فواتير المبيعات", path: "/invoices" },
   { icon: ReceiptText, label: "سندات القبض", path: "/receipts" },
-  { icon: WalletCards, label: "المصروفات", path: "/expenses" },
+  { icon: WalletCards, label: "المصروفات والخرجيات", path: "/expenses" },
   { icon: Landmark, label: "الصندوق والعملات", path: "/cash" },
   { icon: Wifi, label: "اشتراكات الأفراد", path: "/individual-subscriptions" },
-  { icon: Router, label: "الباقات القديمة", path: "/subscriptions" },
   { icon: ChartNoAxesCombined, label: "التقارير", path: "/reports" },
   { icon: Tags, label: "التصنيفات", path: "/categories" },
   { icon: Settings2, label: "الإعدادات", path: "/settings" },

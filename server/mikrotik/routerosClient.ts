@@ -416,6 +416,43 @@ export class RouterosClient {
   }
 
   /**
+   * Get all available profiles from RouterOS (User Manager or Hotspot)
+   */
+  async getAllAvailableProfiles(): Promise<{
+    mode: "usermanager_v6" | "usermanager_v7" | "hotspot";
+    profiles: Array<{ name: string; validity?: string; price?: string }>;
+  }> {
+    // Try user manager v6 or v7 first
+    try {
+      const um = await this.getUserManagerProfiles();
+      return {
+        mode: um.mode === "v6" ? "usermanager_v6" : "usermanager_v7",
+        profiles: um.profiles.map(p => ({
+          name: p.name,
+          validity: p.validity,
+          price: p.price,
+        })),
+      };
+    } catch {
+      // Fallback to Hotspot user profiles
+      try {
+        const hp = await this.getHotspotProfiles();
+        return {
+          mode: "hotspot",
+          profiles: hp.map(p => ({
+            name: p.name,
+          })),
+        };
+      } catch (err: any) {
+        return {
+          mode: "hotspot",
+          profiles: [],
+        };
+      }
+    }
+  }
+
+  /**
    * Add a single card to User Manager (v6 or v7)
    */
   async addUserManagerCard(
@@ -423,7 +460,8 @@ export class RouterosClient {
     card: CardGenerationItem,
     customer: string = "admin"
   ): Promise<{ success: boolean; message?: string }> {
-    const password = card.password !== undefined ? card.password : card.username;
+    // For Yemeni networks and username-only vouchers, password is empty string
+    const password = card.password !== undefined ? card.password : "";
 
     if (mode === "v6") {
       // v6: /tool/user-manager/user/add
@@ -446,7 +484,7 @@ export class RouterosClient {
             profile: card.profileName,
           });
         } catch (e: any) {
-          // Fallback or record error
+          // Fallback or record warning
           console.warn("Could not activate profile for user:", e.message);
         }
       }
@@ -469,7 +507,8 @@ export class RouterosClient {
    * Add a single card to Hotspot Users (/ip/hotspot/user/add)
    */
   async addHotspotCard(card: CardGenerationItem): Promise<{ success: boolean; message?: string }> {
-    const password = card.password !== undefined ? card.password : card.username;
+    // For username-only vouchers in Hotspot, password is empty string
+    const password = card.password !== undefined ? card.password : "";
     const params: Record<string, string> = {
       name: card.username,
       password,

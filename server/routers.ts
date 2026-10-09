@@ -60,9 +60,11 @@ import { adminProcedure, publicProcedure, router } from "./_core/trpc";
 import { createHeartbeatJob, updateHeartbeatJob } from "./_core/heartbeat";
 import { DAILY_BACKUP_CRON, DAILY_BACKUP_TIME_LABEL, getDailyBackupSchedule, saveDailyBackupSchedule, setDailyBackupEnabled } from "./dailyBackup";
 import {
+  batchUpdateProfileMappings,
   deleteBatch,
   deleteCard,
   deleteCardProfile,
+  fetchRouterProfiles,
   generateCardsBatch,
   getDefaultRouter,
   getRouter,
@@ -70,6 +72,7 @@ import {
   listCardProfiles,
   listCards,
   listRouters,
+  purchaseInstantCard,
   saveCardProfile,
   saveRouter,
   sellCard,
@@ -575,6 +578,32 @@ export const appRouter = router({
     deleteBatch: adminProcedure
       .input(z.object({ batchId: z.number().int().positive() }))
       .mutation(({ input }) => deleteBatch(input.batchId)),
+    fetchRouterProfiles: adminProcedure
+      .input(z.object({ routerId: z.number().int().positive().optional() }).optional())
+      .query(({ input }) => fetchRouterProfiles(input?.routerId)),
+    batchUpdateProfileMappings: adminProcedure
+      .input(
+        z.object({
+          mappings: z.array(
+            z.object({
+              profileId: z.number().int().positive(),
+              routerProfileName: z.string().trim(),
+            })
+          ),
+        })
+      )
+      .mutation(({ input }) => batchUpdateProfileMappings(input.mappings)),
+    purchaseInstantCard: adminProcedure
+      .input(
+        z.object({
+          profileId: z.number().int().positive(),
+          routerId: z.number().int().positive().optional(),
+          customerName: z.string().trim().max(100).optional(),
+          customerPhone: z.string().trim().max(30).optional(),
+          notes: z.string().trim().max(255).optional(),
+        })
+      )
+      .mutation(({ ctx, input }) => purchaseInstantCard(ctx.user.id, input)),
   }),
 });
 
