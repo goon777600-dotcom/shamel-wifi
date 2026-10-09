@@ -500,6 +500,42 @@ export const expenses = mysqlTable(
   ],
 );
 
+export const merchantTransactions = mysqlTable(
+  "merchant_transactions",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    contactId: int("contactId")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    direction: mysqlEnum("direction", ["credit", "debit"]).notNull(), // 'credit' = له (بضاعة مسحوبة / استحقاق), 'debit' = عليه (مبلغ حوالة / سداد للتاجر)
+    transactionType: mysqlEnum("transactionType", ["purchase", "transfer"])
+      .notNull()
+      .default("purchase"),
+    invoiceNumber: varchar("invoiceNumber", { length: 120 }), // رقم الفاتورة
+    transferAmount: decimal("transferAmount", { precision: 18, scale: 2 }), // مبلغ الحوالة
+    amount: decimal("amount", { precision: 18, scale: 2 }).notNull(), // المبلغ الإجمالي
+    currencyCode: varchar("currencyCode", { length: 3 })
+      .notNull()
+      .default("YER")
+      .references(() => currencies.code),
+    exchangeRateToBase: decimal("exchangeRateToBase", { precision: 18, scale: 6 })
+      .notNull()
+      .default("1"),
+    details: text("details"), // التفاصيل والتسعير (كم سعرت من هذا التاجر والبيان)
+    transactionDate: timestamp("transactionDate").notNull(),
+    cashAccountId: int("cashAccountId").references(() => cashAccounts.id),
+    notes: text("notes"),
+    createdByUserId: int("createdByUserId").references(() => users.id),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    index("merchant_tx_contact_idx").on(table.contactId),
+    index("merchant_tx_date_idx").on(table.transactionDate),
+    index("merchant_tx_dir_idx").on(table.direction),
+  ],
+);
+
 export const currencyTransfers = mysqlTable(
   "currency_transfers",
   {
@@ -717,4 +753,6 @@ export type WifiCardBatch = typeof wifiCardBatches.$inferSelect;
 export type InsertWifiCardBatch = typeof wifiCardBatches.$inferInsert;
 export type WifiCard = typeof wifiCards.$inferSelect;
 export type InsertWifiCard = typeof wifiCards.$inferInsert;
+export type MerchantTransaction = typeof merchantTransactions.$inferSelect;
+export type InsertMerchantTransaction = typeof merchantTransactions.$inferInsert;
 

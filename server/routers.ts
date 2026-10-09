@@ -18,6 +18,10 @@ import {
   createIndividualSubscriptionCharge,
   createIndividualSubscriptionDiscount,
   addIndividualSubscription,
+  createMerchantTransaction,
+  updateMerchantTransaction,
+  deleteMerchantTransaction,
+  listMerchantTransactions,
   getCashSummary,
   getContactStatement,
   getDashboardSummary,
@@ -473,6 +477,47 @@ export const appRouter = router({
     contactStatement: adminProcedure
       .input(z.object({ contactId: z.number().int().positive() }))
       .query(({ input }) => getContactStatement(input.contactId)),
+    merchantTransactions: adminProcedure
+      .input(z.object({ contactId: z.number().int().positive() }))
+      .query(({ input }) => listMerchantTransactions(input.contactId)),
+    createMerchantTransaction: adminProcedure
+      .input(
+        z.object({
+          contactId: z.number().int().positive(),
+          direction: z.enum(["credit", "debit"]),
+          transactionType: z.enum(["purchase", "transfer"]).optional(),
+          invoiceNumber: z.string().trim().max(120).optional(),
+          transferAmount: moneySchema.optional(),
+          amount: moneySchema,
+          currencyCode: currencyCodeSchema.optional(),
+          exchangeRateToBase: rateSchema.optional(),
+          details: z.string().trim().max(2000).optional(),
+          transactionDate: dateSchema,
+          cashAccountId: z.number().int().positive().optional(),
+          deductFromCash: z.boolean().optional(),
+          notes: z.string().trim().max(2000).optional(),
+        }),
+      )
+      .mutation(({ ctx, input }) => createMerchantTransaction(ctx.user.id, input)),
+    updateMerchantTransaction: adminProcedure
+      .input(
+        z.object({
+          id: z.number().int().positive(),
+          direction: z.enum(["credit", "debit"]).optional(),
+          transactionType: z.enum(["purchase", "transfer"]).optional(),
+          invoiceNumber: z.string().trim().max(120).optional(),
+          transferAmount: moneySchema.optional(),
+          amount: moneySchema.optional(),
+          currencyCode: currencyCodeSchema.optional(),
+          details: z.string().trim().max(2000).optional(),
+          transactionDate: dateSchema.optional(),
+          notes: z.string().trim().max(2000).optional(),
+        }),
+      )
+      .mutation(({ ctx, input }) => updateMerchantTransaction(ctx.user.id, input)),
+    deleteMerchantTransaction: adminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(({ ctx, input }) => deleteMerchantTransaction(ctx.user.id, input.id)),
   }),
   wifiCards: router({
     routers: adminProcedure.query(() => listRouters()),

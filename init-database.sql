@@ -514,5 +514,29 @@ ALTER TABLE `currency_transfers` ADD CONSTRAINT `currency_transfers_fromCashAcco
 ALTER TABLE `currency_transfers` ADD CONSTRAINT `currency_transfers_toCashAccountId_cash_accounts_id_fk` FOREIGN KEY (`toCashAccountId`) REFERENCES `cash_accounts`(`id`) ON DELETE no action ON UPDATE no action;;
 ALTER TABLE `expenses` ADD CONSTRAINT `expenses_cashAccountId_cash_accounts_id_fk` FOREIGN KEY (`cashAccountId`) REFERENCES `cash_accounts`(`id`) ON DELETE no action ON UPDATE no action;;
 ALTER TABLE `invoices` ADD CONSTRAINT `invoices_cashAccountId_cash_accounts_id_fk` FOREIGN KEY (`cashAccountId`) REFERENCES `cash_accounts`(`id`) ON DELETE no action ON UPDATE no action;;
-ALTER TABLE `receipts` ADD CONSTRAINT `receipts_cashAccountId_cash_accounts_id_fk` FOREIGN KEY (`cashAccountId`) REFERENCES `cash_accounts`(`id`) ON DELETE no action ON UPDATE no action;;
 CREATE INDEX `cash_movements_account_date_idx` ON `cash_movements` (`cashAccountId`,`occurredAt`);
+
+CREATE TABLE IF NOT EXISTS `merchant_transactions` (
+	`id` int AUTO_INCREMENT NOT NULL,
+	`contactId` int NOT NULL,
+	`direction` enum('credit','debit') NOT NULL,
+	`transactionType` enum('purchase','transfer') NOT NULL DEFAULT 'purchase',
+	`invoiceNumber` varchar(120),
+	`transferAmount` decimal(18,2),
+	`amount` decimal(18,2) NOT NULL,
+	`currencyCode` varchar(3) NOT NULL DEFAULT 'YER',
+	`exchangeRateToBase` decimal(18,6) NOT NULL DEFAULT '1',
+	`details` text,
+	`transactionDate` timestamp NOT NULL,
+	`cashAccountId` int,
+	`notes` text,
+	`createdByUserId` int,
+	`createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	`updatedAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	CONSTRAINT `merchant_transactions_id` PRIMARY KEY(`id`),
+	CONSTRAINT `merchant_transactions_contactId_fk` FOREIGN KEY (`contactId`) REFERENCES `contacts`(`id`) ON DELETE CASCADE
+);
+CREATE INDEX `merchant_tx_contact_idx` ON `merchant_transactions` (`contactId`);
+CREATE INDEX `merchant_tx_date_idx` ON `merchant_transactions` (`transactionDate`);
+CREATE INDEX `merchant_tx_dir_idx` ON `merchant_transactions` (`direction`);
+

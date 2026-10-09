@@ -3,11 +3,29 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
 import { accountWhatsAppMessage, invoiceWhatsAppMessage, receiptWhatsAppMessage, whatsappUrl } from "@/lib/whatsapp";
-import { ArrowRight, Building2, FilePlus2, HandCoins, MessageCircle, ReceiptText, UserRound } from "lucide-react";
+import {
+  ArrowDownLeft,
+  ArrowRight,
+  ArrowUpRight,
+  Building2,
+  FilePlus2,
+  HandCoins,
+  MessageCircle,
+  Pencil,
+  Printer,
+  ReceiptText,
+  Store,
+  Trash2,
+  UserRound,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useRoute } from "wouter";
 import { ClientTransactionDialog, type ClientActionMode } from "./ContactsPage";
 import { ClientOperationEditDialog, type ClientOperation } from "@/components/ClientOperationEditDialog";
+import { MerchantTransactionDialog, type MerchantTransactionMode } from "@/components/MerchantTransactionDialog";
+import { MerchantStatementDialog } from "@/components/MerchantStatementDialog";
+import { formatMerchantMoney, formatMerchantDate, merchantWhatsAppMessage } from "@/lib/merchantStatement";
+import { toast } from "sonner";
 
 function currencyTotals(rows: Array<{ currencyCode: string; amount: unknown }>) {
   return rows.reduce<Record<string, number>>((totals, row) => {
@@ -20,45 +38,702 @@ export default function ClientAccountPage() {
   const [, params] = useRoute("/contacts/:contactId");
   const contactId = Number(params?.contactId ?? 0);
   const utils = trpc.useUtils();
-  const statementQuery = trpc.accounting.contactStatement.useQuery({ contactId }, { enabled: Number.isInteger(contactId) && contactId > 0 });
+  const statementQuery = trpc.accounting.contactStatement.useQuery(
+    { contactId },
+    { enabled: Number.isInteger(contactId) && contactId > 0 },
+  );
   const whatsappSettingsQuery = trpc.accounting.whatsappSettings.useQuery();
   const [actionMode, setActionMode] = useState<ClientActionMode>(null);
   const [editOperation, setEditOperation] = useState<ClientOperation>(null);
+  const [merchantTxMode, setMerchantTxMode] = useState<MerchantTransactionMode>(null);
+  const [merchantStatementOpen, setMerchantStatementOpen] = useState(false);
 
-  const dueTotals = useMemo(() => currencyTotals((statementQuery.data?.invoices ?? []).map(invoice => ({ currencyCode: invoice.currencyCode, amount: invoice.dueAmount }))), [statementQuery.data?.invoices]);
-  const receiptTotals = useMemo(() => currencyTotals((statementQuery.data?.receipts ?? []).map(receipt => ({ currencyCode: receipt.currencyCode, amount: receipt.amount }))), [statementQuery.data?.receipts]);
-  const timeline = useMemo(() => [
-    ...(statementQuery.data?.invoices ?? []).map(invoice => ({ id: `invoice-${invoice.id}`, operation: { kind: "invoice" as const, id: invoice.id }, date: invoice.issueDate, type: invoice.type === "credit" ? "فاتورة آجلة" : "فاتورة نقدية", number: invoice.invoiceNumber, amount: Number(invoice.totalAmount), currency: invoice.currencyCode, due: Number(invoice.dueAmount), tone: invoice.type === "credit" ? "text-[#9c711a]" : "text-[#0a6372]" })),
-    ...(statementQuery.data?.receipts ?? []).map(receipt => ({ id: `receipt-${receipt.id}`, operation: { kind: "receipt" as const, id: receipt.id }, date: receipt.receiptDate, type: "سند قبض", number: receipt.receiptNumber, amount: Number(receipt.amount), currency: receipt.currencyCode, due: 0, tone: "text-[#08735d]" })),
-  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()), [statementQuery.data?.invoices, statementQuery.data?.receipts]);
+  const deleteMerchantTxMutation = trpc.accounting.deleteMerchantTransaction.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.accounting.contactStatement.invalidate({ contactId }),
+        utils.accounting.merchantTransactions.invalidate({ contactId }),
+        utils.accounting.cashSummary.invalidate(),
+      ]);
+      toast.success("تم حذف قيد التاجر بنجاح");
+    },
+    onError: error => toast.error(error.message),
+  });
 
-  if (statementQuery.isLoading) return <div className="space-y-4"><PageHeader title="حساب العميل" description="جارٍ تحميل بيانات الحساب." /><div className="h-64 animate-pulse rounded-3xl bg-[#eff8f5]" /></div>;
-  if (!statementQuery.data) return <div><PageHeader title="حساب العميل" description="تعذر العثور على هذا الحساب." action={<Button asChild variant="outline"><Link href="/contacts">العودة إلى الحسابات</Link></Button>} /><EmptyState title="الحساب غير متاح" description="ارجع إلى قائمة العملاء واختر حساباً موجوداً." /></div>;
+  const dueTotals = useMemo(
+    () =>
+      currencyTotals(
+        (statementQuery.data?.invoices ?? []).map(invoice => ({
+          currencyCode: invoice.currencyCode,
+          amount: invoice.dueAmount,
+        })),
+      ),
+    [statementQuery.data?.invoices],
+  );
 
-  const { contact, invoices, receipts } = statementQuery.data;
-  const typeLabel = contact.type === "grocery" ? "بقالة" : contact.type === "customer" ? "عميل" : contact.type === "supplier" ? "مورد" : contact.type === "employee" ? "موظف" : "حساب عام";
-  const accountWhatsapp = whatsappUrl(contact.phone, accountWhatsAppMessage(contact.name, dueTotals, whatsappSettingsQuery.data?.whatsappTemplate));
+  const receiptTotals = useMemo(
+    () =>
+      currencyTotals(
+        (statementQuery.data?.receipts ?? []).map(receipt => ({
+          currencyCode: receipt.currencyCode,
+          amount: receipt.amount,
+        })),
+      ),
+    [statementQuery.data?.receipts],
+  );
 
-  return <div className="space-y-6">
-    <PageHeader title={`حساب ${contact.name}`} description="كل معاملات العميل وملخص حسابه في مكان واحد." action={<Button asChild variant="outline" className="border-[#bcd9d2] text-[#0a6372] hover:bg-[#eff8f5]"><Link href="/contacts"><ArrowRight className="ml-2 h-4 w-4" />العودة للحسابات</Link></Button>} />
+  const timeline = useMemo(
+    () => [
+      ...(statementQuery.data?.invoices ?? []).map(invoice => ({
+        id: `invoice-${invoice.id}`,
+        operation: { kind: "invoice" as const, id: invoice.id },
+        date: invoice.issueDate,
+        type: invoice.type === "credit" ? "فاتورة آجلة" : "فاتورة نقدية",
+        number: invoice.invoiceNumber,
+        amount: Number(invoice.totalAmount),
+        currency: invoice.currencyCode,
+        due: Number(invoice.dueAmount),
+        tone: invoice.type === "credit" ? "text-[#9c711a]" : "text-[#0a6372]",
+      })),
+      ...(statementQuery.data?.receipts ?? []).map(receipt => ({
+        id: `receipt-${receipt.id}`,
+        operation: { kind: "receipt" as const, id: receipt.id },
+        date: receipt.receiptDate,
+        type: "سند قبض",
+        number: receipt.receiptNumber,
+        amount: Number(receipt.amount),
+        currency: receipt.currencyCode,
+        due: 0,
+        tone: "text-[#08735d]",
+      })),
+    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [statementQuery.data?.invoices, statementQuery.data?.receipts],
+  );
 
-    <section className="rounded-3xl border border-[#cfe3dd] bg-gradient-to-l from-[#f7fcfa] to-[#edf8f5] p-5 shadow-sm">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-center gap-4"><span className="grid h-14 w-14 place-items-center rounded-2xl bg-[#0a6372] text-white shadow-lg shadow-[#0a6372]/15">{contact.type === "grocery" ? <Building2 className="h-6 w-6" /> : <UserRound className="h-6 w-6" />}</span><div><p className="text-xl font-extrabold text-[#083f4c]">{contact.name}</p><p className="mt-1 text-sm text-slate-600">{typeLabel}{contact.phone ? ` · ${contact.phone}` : ""}{contact.address ? ` · ${contact.address}` : ""}</p></div></div>
-        <div className="flex flex-wrap gap-2">{accountWhatsapp ? <Button asChild variant="outline" className="border-[#25D366] text-[#168b43] hover:bg-[#effcf3]"><a href={accountWhatsapp} target="_blank" rel="noreferrer"><MessageCircle className="ml-1.5 h-4 w-4" />واتساب العميل</a></Button> : <Button variant="outline" disabled title="أضف رقم جوال يمني إلى بيانات العميل أولاً"><MessageCircle className="ml-1.5 h-4 w-4" />أضف رقم واتساب</Button>}<Button onClick={() => setActionMode("receipt")} className="bg-[#08735d] hover:bg-[#075d4b]"><HandCoins className="ml-1.5 h-4 w-4" />سند قبض</Button><Button onClick={() => setActionMode("credit")} className="bg-[#9c711a] hover:bg-[#805c14]"><FilePlus2 className="ml-1.5 h-4 w-4" />فاتورة آجلة</Button><Button variant="outline" onClick={() => setActionMode("cash")} className="border-[#0a6372] text-[#0a6372] hover:bg-white"><FilePlus2 className="ml-1.5 h-4 w-4" />فاتورة نقدية</Button></div>
+  if (statementQuery.isLoading) {
+    return (
+      <div className="space-y-4">
+        <PageHeader title="حساب العميل" description="جارٍ تحميل بيانات الحساب." />
+        <div className="h-64 animate-pulse rounded-3xl bg-[#eff8f5]" />
       </div>
-    </section>
+    );
+  }
 
-    <Tabs defaultValue="summary">
-      <TabsList className="h-auto rounded-xl bg-[#eaf3f1] p-1"><TabsTrigger value="summary" className="rounded-lg px-4 py-2.5 data-[state=active]:bg-white data-[state=active]:text-[#0a6372]">الملخص الإجمالي</TabsTrigger><TabsTrigger value="statement" className="rounded-lg px-4 py-2.5 data-[state=active]:bg-white data-[state=active]:text-[#0a6372]">كشف حساب تفصيلي</TabsTrigger><TabsTrigger value="invoices" className="rounded-lg px-4 py-2.5 data-[state=active]:bg-white data-[state=active]:text-[#0a6372]">الفواتير</TabsTrigger><TabsTrigger value="receipts" className="rounded-lg px-4 py-2.5 data-[state=active]:bg-white data-[state=active]:text-[#0a6372]">سندات القبض</TabsTrigger></TabsList>
-      <TabsContent value="summary" className="mt-5"><div className="grid gap-4 md:grid-cols-3">{["YER", "SAR", "USD"].map(currency => <div key={currency} className="rounded-2xl border border-[#dce8e5] bg-white p-5 shadow-sm"><p className="text-sm text-slate-500">المديونية المتبقية — {currency}</p><p className="mt-2 text-2xl font-extrabold text-[#9c711a]">{new Intl.NumberFormat("ar-YE", { minimumFractionDigits: 2 }).format(dueTotals[currency] ?? 0)}</p><p className="mt-3 text-xs text-slate-500">إجمالي المقبوضات: <b className="text-[#08735d]">{new Intl.NumberFormat("ar-YE", { minimumFractionDigits: 2 }).format(receiptTotals[currency] ?? 0)}</b></p></div>)}</div><div className="mt-5 grid gap-4 md:grid-cols-2"><SectionCard title="مؤشرات الحساب" subtitle="ملخص سريع لحركة العميل."><div className="grid grid-cols-2 gap-3 p-4"><Metric label="عدد الفواتير" value={String(invoices.length)} /><Metric label="سندات القبض" value={String(receipts.length)} /><Metric label="الفواتير الآجلة" value={String(invoices.filter(invoice => invoice.type === "credit").length)} /><Metric label="آخر حركة" value={timeline[0] ? arabicDate(timeline[0].date) : "—"} /></div></SectionCard><SectionCard title="ملاحظات الحساب" subtitle="تظهر هنا المعلومات التي سجلتها لهذا العميل."><p className="p-4 text-sm leading-7 text-slate-600">{contact.notes || "لا توجد ملاحظات مسجلة على هذا الحساب."}</p></SectionCard></div></TabsContent>
-      <TabsContent value="statement" className="mt-5"><SectionCard title="كشف حساب تفصيلي" subtitle="اضغط على أي فاتورة أو سند قبض لفتح التعديل.">{timeline.length ? <div className="divide-y divide-[#edf3f1]">{timeline.map(item => <button type="button" key={item.id} onClick={() => setEditOperation(item.operation)} className="flex w-full flex-col gap-2 px-5 py-4 text-right transition-colors hover:bg-[#f4fbf8] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0a6372] sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-xl bg-[#eff8f5] text-[#0a6372]"><ReceiptText className="h-4 w-4" /></span><div><p className={`font-extrabold ${item.tone}`}>{item.type} <span className="text-[#083f4c]">{item.number}</span></p><p className="mt-1 text-xs text-slate-500">{arabicDate(item.date)} · اضغط للتعديل</p></div></div><div className="text-right"><p className="font-extrabold text-[#083f4c]">{item.amount.toFixed(2)} {item.currency}</p>{item.due > 0 ? <p className="mt-1 text-xs font-bold text-[#9c711a]">متبقي: {item.due.toFixed(2)} {item.currency}</p> : null}</div></button>)}</div> : <EmptyState title="لا توجد معاملات بعد" description="استخدم الأزرار في أعلى الصفحة لإصدار أول فاتورة أو سند قبض." />}</SectionCard></TabsContent>
-      <TabsContent value="invoices" className="mt-5"><SectionCard title="فواتير العميل" subtitle="اضغط تعديل لفتح مبلغ الفاتورة وبيانها وتاريخها.">{invoices.length ? <div className="divide-y divide-[#edf3f1]">{invoices.map(invoice => { const url = whatsappUrl(contact.phone, invoiceWhatsAppMessage(contact.name, invoice, whatsappSettingsQuery.data?.whatsappTemplate)); return <div key={invoice.id} className="flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-extrabold text-[#083f4c]">{invoice.invoiceNumber}</p><p className="mt-1 text-xs text-slate-500">{invoice.type === "credit" ? "فاتورة آجلة" : "فاتورة نقدية"} · {arabicDate(invoice.issueDate)}</p></div><div className="flex flex-wrap items-center gap-2"><div className="text-right"><p className="font-extrabold text-[#0a6372]">{invoice.totalAmount} {invoice.currencyCode}</p><p className="mt-1 text-xs text-[#9c711a]">المتبقي: {invoice.dueAmount} {invoice.currencyCode}</p></div><Button size="sm" variant="outline" onClick={() => setEditOperation({ kind: "invoice", id: invoice.id })} className="border-[#0a6372] text-[#0a6372]">تعديل</Button>{url ? <Button asChild size="sm" variant="outline" className="border-[#25D366] text-[#168b43] hover:bg-[#effcf3]"><a href={url} target="_blank" rel="noreferrer"><MessageCircle className="ml-1 h-4 w-4" />واتساب</a></Button> : null}</div></div>; })}</div> : <EmptyState title="لا توجد فواتير" description="أصدر فاتورة نقدية أو آجلة من الأزرار في أعلى الحساب." />}</SectionCard></TabsContent>
-      <TabsContent value="receipts" className="mt-5"><SectionCard title="سندات قبض العميل" subtitle="المبالغ المستلمة التي دخلت إلى الصندوق من هذا العميل.">{receipts.length ? <div className="divide-y divide-[#edf3f1]">{receipts.map(receipt => { const url = whatsappUrl(contact.phone, receiptWhatsAppMessage(contact.name, receipt, whatsappSettingsQuery.data?.whatsappTemplate)); return <div key={receipt.id} className="flex items-center justify-between gap-3 px-5 py-4"><div><p className="font-extrabold text-[#083f4c]">{receipt.receiptNumber}</p><p className="mt-1 text-xs text-slate-500">{arabicDate(receipt.receiptDate)}</p></div><div className="flex flex-wrap items-center gap-2"><p className="font-extrabold text-[#08735d]">{receipt.amount} {receipt.currencyCode}</p><Button size="sm" variant="outline" onClick={() => setEditOperation({ kind: "receipt", id: receipt.id })} className="border-[#08735d] text-[#08735d]">تعديل</Button>{url ? <Button asChild size="sm" variant="outline" className="border-[#25D366] text-[#168b43] hover:bg-[#effcf3]"><a href={url} target="_blank" rel="noreferrer"><MessageCircle className="ml-1 h-4 w-4" />واتساب</a></Button> : null}</div></div>; })}</div> : <EmptyState title="لا توجد سندات قبض" description="يظهر هنا كل سند قبض تسجله لهذا العميل." />}</SectionCard></TabsContent>
-    </Tabs>
-    <ClientTransactionDialog contact={contact} mode={actionMode} onClose={() => setActionMode(null)} onSuccess={() => { setActionMode(null); utils.accounting.contactStatement.invalidate({ contactId }); }} />
-    <ClientOperationEditDialog contactId={contactId} operation={editOperation} onClose={() => setEditOperation(null)} onSuccess={() => { setEditOperation(null); }} />
-  </div>;
+  if (!statementQuery.data) {
+    return (
+      <div>
+        <PageHeader
+          title="حساب العميل"
+          description="تعذر العثور على هذا الحساب."
+          action={
+            <Button asChild variant="outline">
+              <Link href="/contacts">العودة إلى الحسابات</Link>
+            </Button>
+          }
+        />
+        <EmptyState title="الحساب غير متاح" description="ارجع إلى قائمة العملاء واختر حساباً موجوداً." />
+      </div>
+    );
+  }
+
+  const { contact, invoices, receipts, merchantTransactions = [], merchantTotals = { totalCredit: 0, totalDebit: 0, netBalance: 0 } } =
+    statementQuery.data;
+
+  const isMerchant = contact.type === "supplier";
+  const typeLabel =
+    contact.type === "grocery"
+      ? "بقالة"
+      : contact.type === "customer"
+      ? "عميل"
+      : contact.type === "supplier"
+      ? "التجار"
+      : contact.type === "employee"
+      ? "موظف"
+      : "حساب عام";
+
+  // WhatsApp Messages
+  const accountWhatsapp = whatsappUrl(
+    contact.phone,
+    isMerchant
+      ? merchantWhatsAppMessage(contact.name, {
+          totalCredit: merchantTotals.totalCredit,
+          totalDebit: merchantTotals.totalDebit,
+          netBalance: merchantTotals.netBalance,
+        })
+      : accountWhatsAppMessage(contact.name, dueTotals, whatsappSettingsQuery.data?.whatsappTemplate),
+  );
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title={`حساب ${contact.name}`}
+        description={
+          isMerchant
+            ? "حساب التاجر: قيد البضاعة المسحوبة ومبالغ الحوالات والتسعير التفصيلي."
+            : "كل معاملات العميل وملخص حسابه في مكان واحد."
+        }
+        action={
+          <Button asChild variant="outline" className="border-[#bcd9d2] text-[#0a6372] hover:bg-[#eff8f5]">
+            <Link href="/contacts">
+              <ArrowRight className="ml-2 h-4 w-4" />
+              العودة للحسابات
+            </Link>
+          </Button>
+        }
+      />
+
+      {/* Profile & Main Action Card */}
+      <section className="rounded-3xl border border-[#cfe3dd] bg-gradient-to-l from-[#f7fcfa] to-[#edf8f5] p-5 shadow-sm">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-4">
+            <span
+              className={`grid h-14 w-14 place-items-center rounded-2xl text-white shadow-lg ${
+                isMerchant
+                  ? "bg-violet-700 shadow-violet-700/20"
+                  : contact.type === "grocery"
+                  ? "bg-amber-600 shadow-amber-600/20"
+                  : "bg-[#0a6372] shadow-[#0a6372]/15"
+              }`}
+            >
+              {isMerchant ? (
+                <Store className="h-7 w-7" />
+              ) : contact.type === "grocery" ? (
+                <Building2 className="h-6 w-6" />
+              ) : (
+                <UserRound className="h-6 w-6" />
+              )}
+            </span>
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="text-xl font-black text-[#083f4c]">{contact.name}</p>
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-black ring-1 ${
+                    isMerchant
+                      ? "bg-violet-100 text-violet-800 ring-violet-300"
+                      : "bg-[#eff8f5] text-[#0a6372] ring-[#bcd9d2]"
+                  }`}
+                >
+                  صنف {typeLabel}
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-slate-600">
+                {contact.phone ? `هاتف: ${contact.phone}` : "الهاتف: غير مسجل"}
+                {contact.address ? ` · العنوان: ${contact.address}` : ""}
+              </p>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex flex-wrap items-center gap-2">
+            {isMerchant ? (
+              <>
+                <Button
+                  onClick={() => setMerchantTxMode("credit")}
+                  className="bg-[#b45309] hover:bg-[#92400e] font-bold text-xs"
+                >
+                  <ArrowDownLeft className="ml-1.5 h-4 w-4" />
+                  سحب بضاعة (له)
+                </Button>
+                <Button
+                  onClick={() => setMerchantTxMode("debit")}
+                  className="bg-[#08735d] hover:bg-[#065f4c] font-bold text-xs"
+                >
+                  <ArrowUpRight className="ml-1.5 h-4 w-4" />
+                  مبلغ حوالة (عليه)
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setMerchantStatementOpen(true)}
+                  className="border-[#0a6372] text-[#0a6372] hover:bg-white font-bold text-xs"
+                >
+                  <Printer className="ml-1.5 h-4 w-4" />
+                  كشف حساب (PDF)
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button onClick={() => setActionMode("receipt")} className="bg-[#08735d] hover:bg-[#075d4b]">
+                  <HandCoins className="ml-1.5 h-4 w-4" />
+                  سند قبض
+                </Button>
+                <Button onClick={() => setActionMode("credit")} className="bg-[#9c711a] hover:bg-[#805c14]">
+                  <FilePlus2 className="ml-1.5 h-4 w-4" />
+                  فاتورة آجلة
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setActionMode("cash")}
+                  className="border-[#0a6372] text-[#0a6372] hover:bg-white"
+                >
+                  <FilePlus2 className="ml-1.5 h-4 w-4" />
+                  فاتورة نقدية
+                </Button>
+              </>
+            )}
+
+            {accountWhatsapp ? (
+              <Button
+                asChild
+                variant="outline"
+                className="border-[#25D366] text-[#168b43] hover:bg-[#effcf3] font-bold text-xs"
+              >
+                <a href={accountWhatsapp} target="_blank" rel="noreferrer">
+                  <MessageCircle className="ml-1.5 h-4 w-4" />
+                  واتساب {isMerchant ? "التاجر" : "العميل"}
+                </a>
+              </Button>
+            ) : (
+              <Button variant="outline" disabled title="أضف رقم جوال أولاً">
+                <MessageCircle className="ml-1.5 h-4 w-4" />
+                أضف رقم واتساب
+              </Button>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Tabs */}
+      <Tabs defaultValue={isMerchant ? "merchant_ledger" : "summary"}>
+        <TabsList className="h-auto rounded-xl bg-[#eaf3f1] p-1">
+          {isMerchant ? (
+            <TabsTrigger
+              value="merchant_ledger"
+              className="rounded-lg px-4 py-2.5 data-[state=active]:bg-white data-[state=active]:text-[#0a6372] font-black"
+            >
+              حركات التاجر والتسعير ({merchantTransactions.length})
+            </TabsTrigger>
+          ) : null}
+          <TabsTrigger
+            value="summary"
+            className="rounded-lg px-4 py-2.5 data-[state=active]:bg-white data-[state=active]:text-[#0a6372]"
+          >
+            الملخص الإجمالي
+          </TabsTrigger>
+          {!isMerchant ? (
+            <TabsTrigger
+              value="statement"
+              className="rounded-lg px-4 py-2.5 data-[state=active]:bg-white data-[state=active]:text-[#0a6372]"
+            >
+              كشف حساب تفصيلي
+            </TabsTrigger>
+          ) : null}
+          <TabsTrigger
+            value="invoices"
+            className="rounded-lg px-4 py-2.5 data-[state=active]:bg-white data-[state=active]:text-[#0a6372]"
+          >
+            الفواتير ({invoices.length})
+          </TabsTrigger>
+          <TabsTrigger
+            value="receipts"
+            className="rounded-lg px-4 py-2.5 data-[state=active]:bg-white data-[state=active]:text-[#0a6372]"
+          >
+            سندات القبض ({receipts.length})
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Merchant Ledger Tab */}
+        {isMerchant ? (
+          <TabsContent value="merchant_ledger" className="mt-5 space-y-5">
+            {/* Merchant Top Summary Cards */}
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 text-center shadow-sm">
+                <p className="text-xs font-bold text-amber-800">إجمالي البضاعة المسحوبة (له)</p>
+                <p className="mt-1 text-2xl font-black text-amber-900">
+                  {formatMerchantMoney(merchantTotals.totalCredit)}
+                </p>
+                <p className="mt-1 text-[11px] text-amber-700">فواتير بضاعة ومشتريات</p>
+              </div>
+
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-center shadow-sm">
+                <p className="text-xs font-bold text-emerald-800">إجمالي مبالغ الحوالات (عليه)</p>
+                <p className="mt-1 text-2xl font-black text-emerald-900">
+                  {formatMerchantMoney(merchantTotals.totalDebit)}
+                </p>
+                <p className="mt-1 text-[11px] text-emerald-700">سدادات وحوالات مدفوعة</p>
+              </div>
+
+              <div className="rounded-2xl border border-[#bcd9d2] bg-white p-4 text-center shadow-sm">
+                <p className="text-xs font-bold text-[#083f4c]">صافي الرصيد المتبقي</p>
+                <p
+                  className="mt-1 text-2xl font-black"
+                  style={{
+                    color:
+                      merchantTotals.netBalance > 0
+                        ? "#b45309"
+                        : merchantTotals.netBalance < 0
+                        ? "#08735d"
+                        : "#083f4c",
+                  }}
+                >
+                  {formatMerchantMoney(Math.abs(merchantTotals.netBalance))}
+                </p>
+                <p className="mt-1 text-xs font-bold">
+                  {merchantTotals.netBalance > 0 ? (
+                    <span className="text-amber-700">● مستحق للتاجر (له)</span>
+                  ) : merchantTotals.netBalance < 0 ? (
+                    <span className="text-emerald-700">● متبقي لصالحنا عند التاجر (عليه)</span>
+                  ) : (
+                    <span className="text-slate-500">● الحساب مصفّر وخالص</span>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {/* Merchant Detailed Movements Table */}
+            <SectionCard
+              title="سجل حركات وبضائع التاجر"
+              subtitle="جدول مسطر يوضح كل فاتورة، مبلغ الحوالة، والتفاصيل والتسعير لمعرفة كم سعرت من هذا التاجر."
+            >
+              {merchantTransactions.length ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[760px] text-right text-xs">
+                    <thead className="bg-[#f8fcfb] text-slate-600 font-bold">
+                      <tr className="border-b border-[#e8f0ee]">
+                        <th className="px-4 py-3 text-center" style={{ width: "35px" }}>#</th>
+                        <th className="px-4 py-3" style={{ width: "95px" }}>التاريخ</th>
+                        <th className="px-4 py-3 text-center" style={{ width: "125px" }}>نوع القيد</th>
+                        <th className="px-4 py-3 text-center" style={{ width: "95px" }}>رقم الفاتورة</th>
+                        <th className="px-4 py-3">التفاصيل والتسعير (البيان)</th>
+                        <th className="px-4 py-3 text-left" style={{ width: "110px" }}>المسحوب (له)</th>
+                        <th className="px-4 py-3 text-left" style={{ width: "110px" }}>الحوالة (عليه)</th>
+                        <th className="px-4 py-3 text-left" style={{ width: "115px" }}>الرصيد</th>
+                        <th className="px-4 py-3 text-center" style={{ width: "50px" }}>إجراء</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#edf3f1]">
+                      {merchantTransactions.map((tx: any, idx: number) => {
+                        const isCredit = tx.direction === "credit";
+                        return (
+                          <tr key={tx.id} className="hover:bg-[#fbfdfc] transition-colors">
+                            <td className="px-4 py-3.5 text-center text-slate-400 font-bold">{idx + 1}</td>
+                            <td className="px-4 py-3.5 whitespace-nowrap text-slate-600 font-medium">
+                              {formatMerchantDate(tx.transactionDate)}
+                            </td>
+                            <td className="px-4 py-3.5 text-center">
+                              <span
+                                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-black ${
+                                  isCredit
+                                    ? "bg-amber-100 text-amber-800"
+                                    : "bg-emerald-100 text-emerald-800"
+                                }`}
+                              >
+                                {isCredit ? (
+                                  <ArrowDownLeft className="h-3.5 w-3.5 text-amber-700" />
+                                ) : (
+                                  <ArrowUpRight className="h-3.5 w-3.5 text-emerald-700" />
+                                )}
+                                {isCredit ? "له (بضاعة)" : "عليه (حوالة)"}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5 text-center font-bold text-[#0a6372]">
+                              {tx.invoiceNumber ? (
+                                <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-[11px]">
+                                  #{tx.invoiceNumber}
+                                </span>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <p className="font-black text-[#083f4c] text-sm">
+                                {tx.details || (isCredit ? "بضاعة مسحوبة" : "مبلغ حوالة مسددة")}
+                              </p>
+                              {tx.notes ? (
+                                <p className="text-xs text-slate-500 mt-1">ملاحظات: {tx.notes}</p>
+                              ) : null}
+                              {tx.cashAccountName ? (
+                                <p className="text-[11px] text-sky-700 font-bold mt-0.5">
+                                  عبر الصندوق: {tx.cashAccountName}
+                                </p>
+                              ) : null}
+                            </td>
+                            <td className="px-4 py-3.5 text-left font-black text-amber-800">
+                              {isCredit ? formatMerchantMoney(tx.amount, tx.currencyCode) : "—"}
+                            </td>
+                            <td className="px-4 py-3.5 text-left font-black text-emerald-700">
+                              {!isCredit ? formatMerchantMoney(tx.amount, tx.currencyCode) : "—"}
+                            </td>
+                            <td className="px-4 py-3.5 text-left font-black text-[#083f4c] bg-slate-50/60">
+                              {tx.runningBalance !== undefined
+                                ? formatMerchantMoney(tx.runningBalance, tx.currencyCode)
+                                : "—"}
+                            </td>
+                            <td className="px-4 py-3.5 text-center">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  if (confirm("هل أنت متأكد من حذف هذا القيد؟")) {
+                                    deleteMerchantTxMutation.mutate(tx.id);
+                                  }
+                                }}
+                                className="h-8 w-8 text-rose-500 hover:bg-rose-50 hover:text-rose-700"
+                                title="حذف القيد"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <EmptyState
+                  title="لا توجد حركات مسجلة لهذا التاجر بعد"
+                  description="استخدم أزرار 'سحب بضاعة (له)' أو 'مبلغ حوالة (عليه)' أعلاه لتسجيل أول قيد."
+                />
+              )}
+            </SectionCard>
+          </TabsContent>
+        ) : null}
+
+        {/* Summary Tab */}
+        <TabsContent value="summary" className="mt-5">
+          <div className="grid gap-4 md:grid-cols-3">
+            {["YER", "SAR", "USD"].map(currency => (
+              <div key={currency} className="rounded-2xl border border-[#dce8e5] bg-white p-5 shadow-sm">
+                <p className="text-sm text-slate-500">المديونية المتبقية — {currency}</p>
+                <p className="mt-2 text-2xl font-extrabold text-[#9c711a]">
+                  {new Intl.NumberFormat("ar-YE", { minimumFractionDigits: 2 }).format(dueTotals[currency] ?? 0)}
+                </p>
+                <p className="mt-3 text-xs text-slate-500">
+                  إجمالي المقبوضات:{" "}
+                  <b className="text-[#08735d]">
+                    {new Intl.NumberFormat("ar-YE", { minimumFractionDigits: 2 }).format(receiptTotals[currency] ?? 0)}
+                  </b>
+                </p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            <SectionCard title="مؤشرات الحساب" subtitle="ملخص سريع لحركة العميل.">
+              <div className="grid grid-cols-2 gap-3 p-4">
+                <Metric label="عدد الفواتير" value={String(invoices.length)} />
+                <Metric label="سندات القبض" value={String(receipts.length)} />
+                <Metric
+                  label="الفواتير الآجلة"
+                  value={String(invoices.filter(invoice => invoice.type === "credit").length)}
+                />
+                <Metric label="آخر حركة" value={timeline[0] ? arabicDate(timeline[0].date) : "—"} />
+              </div>
+            </SectionCard>
+            <SectionCard title="ملاحظات الحساب" subtitle="تظهر هنا المعلومات التي سجلتها لهذا الحساب.">
+              <p className="p-4 text-sm leading-7 text-slate-600">
+                {contact.notes || "لا توجد ملاحظات مسجلة على هذا الحساب."}
+              </p>
+            </SectionCard>
+          </div>
+        </TabsContent>
+
+        {/* Detailed Timeline Statement Tab */}
+        <TabsContent value="statement" className="mt-5">
+          <SectionCard title="كشف حساب تفصيلي" subtitle="اضغط على أي فاتورة أو سند قبض لفتح التعديل.">
+            {timeline.length ? (
+              <div className="divide-y divide-[#edf3f1]">
+                {timeline.map(item => (
+                  <button
+                    type="button"
+                    key={item.id}
+                    onClick={() => setEditOperation(item.operation)}
+                    className="flex w-full flex-col gap-2 px-5 py-4 text-right transition-colors hover:bg-[#f4fbf8] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0a6372] sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#eff8f5] text-[#0a6372]">
+                        <ReceiptText className="h-4 w-4" />
+                      </span>
+                      <div>
+                        <p className={`font-extrabold ${item.tone}`}>
+                          {item.type} <span className="text-[#083f4c]">{item.number}</span>
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">{arabicDate(item.date)} · اضغط للتعديل</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-extrabold text-[#083f4c]">
+                        {item.amount.toFixed(2)} {item.currency}
+                      </p>
+                      {item.due > 0 ? (
+                        <p className="mt-1 text-xs font-bold text-[#9c711a]">
+                          متبقي: {item.due.toFixed(2)} {item.currency}
+                        </p>
+                      ) : null}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                title="لا توجد معاملات بعد"
+                description="استخدم الأزرار في أعلى الصفحة لإصدار أول فاتورة أو سند قبض."
+              />
+            )}
+          </SectionCard>
+        </TabsContent>
+
+        {/* Invoices Tab */}
+        <TabsContent value="invoices" className="mt-5">
+          <SectionCard title="فواتير العميل" subtitle="اضغط تعديل لفتح مبلغ الفاتورة وبيانها وتاريخها.">
+            {invoices.length ? (
+              <div className="divide-y divide-[#edf3f1]">
+                {invoices.map(invoice => {
+                  const url = whatsappUrl(
+                    contact.phone,
+                    invoiceWhatsAppMessage(contact.name, invoice, whatsappSettingsQuery.data?.whatsappTemplate),
+                  );
+                  return (
+                    <div
+                      key={invoice.id}
+                      className="flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div>
+                        <p className="font-extrabold text-[#083f4c]">{invoice.invoiceNumber}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {invoice.type === "credit" ? "فاتورة آجلة" : "فاتورة نقدية"} ·{" "}
+                          {arabicDate(invoice.issueDate)}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-right">
+                          <p className="font-extrabold text-[#0a6372]">
+                            {invoice.totalAmount} {invoice.currencyCode}
+                          </p>
+                          <p className="mt-1 text-xs text-[#9c711a]">
+                            المتبقي: {invoice.dueAmount} {invoice.currencyCode}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEditOperation({ kind: "invoice", id: invoice.id })}
+                          className="border-[#0a6372] text-[#0a6372]"
+                        >
+                          تعديل
+                        </Button>
+                        {url ? (
+                          <Button
+                            asChild
+                            size="sm"
+                            variant="outline"
+                            className="border-[#25D366] text-[#168b43] hover:bg-[#effcf3]"
+                          >
+                            <a href={url} target="_blank" rel="noreferrer">
+                              <MessageCircle className="ml-1 h-4 w-4" />
+                              واتساب
+                            </a>
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <EmptyState title="لا توجد فواتير" description="أصدر فاتورة نقدية أو آجلة من الأزرار في أعلى الحساب." />
+            )}
+          </SectionCard>
+        </TabsContent>
+
+        {/* Receipts Tab */}
+        <TabsContent value="receipts" className="mt-5">
+          <SectionCard title="سندات قبض العميل" subtitle="المبالغ المستلمة التي دخلت إلى الصندوق من هذا الحساب.">
+            {receipts.length ? (
+              <div className="divide-y divide-[#edf3f1]">
+                {receipts.map(receipt => {
+                  const url = whatsappUrl(
+                    contact.phone,
+                    receiptWhatsAppMessage(contact.name, receipt, whatsappSettingsQuery.data?.whatsappTemplate),
+                  );
+                  return (
+                    <div key={receipt.id} className="flex items-center justify-between gap-3 px-5 py-4">
+                      <div>
+                        <p className="font-extrabold text-[#083f4c]">{receipt.receiptNumber}</p>
+                        <p className="mt-1 text-xs text-slate-500">{arabicDate(receipt.receiptDate)}</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-extrabold text-[#08735d]">
+                          {receipt.amount} {receipt.currencyCode}
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEditOperation({ kind: "receipt", id: receipt.id })}
+                          className="border-[#08735d] text-[#08735d]"
+                        >
+                          تعديل
+                        </Button>
+                        {url ? (
+                          <Button
+                            asChild
+                            size="sm"
+                            variant="outline"
+                            className="border-[#25D366] text-[#168b43] hover:bg-[#effcf3]"
+                          >
+                            <a href={url} target="_blank" rel="noreferrer">
+                              <MessageCircle className="ml-1 h-4 w-4" />
+                              واتساب
+                            </a>
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <EmptyState title="لا توجد سندات قبض" description="يظهر هنا كل سند قبض تسجله لهذا الحساب." />
+            )}
+          </SectionCard>
+        </TabsContent>
+      </Tabs>
+
+      {/* Standard Dialogs */}
+      <ClientTransactionDialog
+        contact={contact}
+        mode={actionMode}
+        onClose={() => setActionMode(null)}
+        onSuccess={() => {
+          setActionMode(null);
+          utils.accounting.contactStatement.invalidate({ contactId });
+        }}
+      />
+      <ClientOperationEditDialog
+        contactId={contactId}
+        operation={editOperation}
+        onClose={() => setEditOperation(null)}
+        onSuccess={() => {
+          setEditOperation(null);
+        }}
+      />
+
+      {/* Merchant Specific Dialogs */}
+      <MerchantTransactionDialog
+        merchant={contact}
+        mode={merchantTxMode}
+        onClose={() => setMerchantTxMode(null)}
+        onSuccess={() => {
+          utils.accounting.contactStatement.invalidate({ contactId });
+        }}
+      />
+      <MerchantStatementDialog
+        open={merchantStatementOpen}
+        onOpenChange={setMerchantStatementOpen}
+        merchant={contact}
+        transactions={merchantTransactions}
+        totalCredit={merchantTotals.totalCredit}
+        totalDebit={merchantTotals.totalDebit}
+        netBalance={merchantTotals.netBalance}
+      />
+    </div>
+  );
 }
 
-function Metric({ label, value }: { label: string; value: string }) { return <div className="rounded-xl bg-[#f8fcfb] p-3"><p className="text-xs text-slate-500">{label}</p><p className="mt-1 font-extrabold text-[#083f4c]">{value}</p></div>; }
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-[#f8fcfb] p-3">
+      <p className="text-xs text-slate-500">{label}</p>
+      <p className="mt-1 font-extrabold text-[#083f4c]">{value}</p>
+    </div>
+  );
+}

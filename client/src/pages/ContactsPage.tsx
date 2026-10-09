@@ -10,10 +10,11 @@ import { formatCustomerPhone, parseCustomerPhone, type PhoneCountryCode } from "
 import { contactTypeLabel, type ContactType } from "@/lib/contactTypes";
 import { buildContactFormPayload } from "@/lib/contactForm";
 import { invoiceWhatsAppMessage, receiptWhatsAppMessage, whatsappUrl } from "@/lib/whatsapp";
-import { Building2, BriefcaseBusiness, FilePlus2, FileText, HandCoins, Landmark, Pencil, Plus, Search, Store, Truck, UserRound, UsersRound } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Building2, BriefcaseBusiness, FilePlus2, FileText, HandCoins, Landmark, Pencil, Plus, Search, Store, Truck, UserRound, UsersRound } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
+import { MerchantTransactionDialog, type MerchantTransactionMode } from "@/components/MerchantTransactionDialog";
 
 type ContactForm = { name: string; type: ContactType; phone: string; address: string; notes: string };
 export type ClientActionMode = "cash" | "credit" | "receipt" | null;
@@ -40,6 +41,8 @@ export default function ContactsPage() {
   const [typeFilter, setTypeFilter] = useState<"all" | ContactType>("all");
   const [form, setForm] = useState<ContactForm>(blankForm);
   const [phoneCountry, setPhoneCountry] = useState<PhoneCountryCode>("YE");
+  const [quickMerchant, setQuickMerchant] = useState<{ id: number; name: string; phone?: string | null } | null>(null);
+  const [quickMerchantMode, setQuickMerchantMode] = useState<MerchantTransactionMode>(null);
   const statementQuery = trpc.accounting.contactStatement.useQuery({ contactId: statementContactId ?? 0 }, { enabled: statementContactId !== null });
 
   const createMutation = trpc.accounting.createContact.useMutation({
@@ -158,7 +161,7 @@ export default function ContactsPage() {
                     <td className="px-5 py-4 text-sm text-slate-600">{contact.phone || "—"}</td>
                     <td className="max-w-52 truncate px-5 py-4 text-sm text-slate-600">{contact.address || "—"}</td>
                     <td className="px-5 py-4 text-sm text-slate-500">{arabicDate(contact.createdAt)}</td>
-                    <td className="px-5 py-4"><div className="flex items-center gap-1"><Button variant="ghost" size="sm" onClick={() => setStatementContactId(contact.id)} className="h-9 text-[#0a6372] hover:bg-[#eff8f5]"><FileText className="ml-1 h-4 w-4" />كشف الحساب</Button><Button variant="ghost" size="icon" onClick={() => openEdit(contact)} className="h-9 w-9 rounded-lg text-[#0a6372] hover:bg-[#eff8f5]"><Pencil className="h-4 w-4" /><span className="sr-only">تعديل الحساب</span></Button></div></td>
+                    <td className="px-5 py-4"><div className="flex items-center gap-1">{contact.type === "supplier" ? <Button variant="outline" size="sm" onClick={() => { setQuickMerchant(contact); setQuickMerchantMode("credit"); }} className="h-9 border-amber-300 text-amber-800 hover:bg-amber-50 font-bold"><Store className="ml-1 h-3.5 w-3.5 text-amber-600" />حركة تاجر</Button> : null}<Button variant="ghost" size="sm" onClick={() => setStatementContactId(contact.id)} className="h-9 text-[#0a6372] hover:bg-[#eff8f5]"><FileText className="ml-1 h-4 w-4" />كشف الحساب</Button><Button variant="ghost" size="icon" onClick={() => openEdit(contact)} className="h-9 w-9 rounded-lg text-[#0a6372] hover:bg-[#eff8f5]"><Pencil className="h-4 w-4" /><span className="sr-only">تعديل الحساب</span></Button></div></td>
                   </tr>;
                 })}
               </tbody>
@@ -187,7 +190,7 @@ export default function ContactsPage() {
       <Dialog open={statementContactId !== null} onOpenChange={open => { if (!open) setStatementContactId(null); }}>
         <DialogContent dir="rtl" className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><DialogTitle>كشف حساب {statementQuery.data?.contact.name ?? "العميل"}</DialogTitle><DialogDescription className="mt-1">يعرض الفواتير وسندات القبض المسجلة. الرصيد المتبقي هو المديونية التي لم تدخل الصندوق بعد.</DialogDescription></div><Button size="sm" variant="outline" onClick={() => { if (statementQuery.data?.contact) openStatementEdit(statementQuery.data.contact); }} className="w-fit border-[#bcd9d2] text-[#0a6372] hover:bg-[#eff8f5]"><Pencil className="ml-1.5 h-4 w-4" />تعديل بيانات العميل</Button></div></DialogHeader>
-          {statementQuery.isLoading ? <ContactsSkeleton /> : statementQuery.data ? <div className="space-y-5 py-2"><div className="rounded-2xl border border-[#bcd9d2] bg-[#f4fbf8] p-4"><div className="mb-3"><h3 className="font-extrabold text-[#083f4c]">معاملات {statementQuery.data.contact.name}</h3><p className="mt-1 text-sm text-slate-600">سجّل كل معاملة لهذا العميل من داخل حسابه دون الرجوع إلى صفحات أخرى.</p></div><div className="flex flex-wrap gap-2"><Button size="sm" onClick={() => setClientActionMode("receipt")} className="bg-[#08735d] hover:bg-[#075d4b]"><HandCoins className="ml-1.5 h-4 w-4" />إضافة سند قبض</Button><Button size="sm" onClick={() => setClientActionMode("credit")} className="bg-[#9c711a] hover:bg-[#805c14]"><FilePlus2 className="ml-1.5 h-4 w-4" />فاتورة آجلة</Button><Button size="sm" variant="outline" onClick={() => setClientActionMode("cash")} className="border-[#0a6372] text-[#0a6372] hover:bg-[#eff8f5]"><FilePlus2 className="ml-1.5 h-4 w-4" />فاتورة نقدية</Button></div></div><div className="grid gap-3 sm:grid-cols-3">{["YER", "SAR", "USD"].map(currency => <div key={currency} className="rounded-xl border border-[#dce8e5] bg-[#fbfdfc] p-3"><p className="text-xs text-slate-500">المتبقي {currency}</p><p className="mt-1 font-extrabold text-[#9c711a]">{new Intl.NumberFormat("ar-YE", { minimumFractionDigits: 2 }).format(statementTotals[currency] ?? 0)}</p></div>)}</div><div className="rounded-2xl border border-[#dce8e5]"><h3 className="border-b border-[#e8f0ee] px-4 py-3 font-extrabold text-[#083f4c]">الفواتير</h3><div className="divide-y divide-[#edf3f1]">{statementQuery.data.invoices.length ? statementQuery.data.invoices.map(invoice => <div key={invoice.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-bold text-[#083f4c]">{invoice.invoiceNumber} <span className="text-xs font-medium text-slate-500">· {arabicDate(invoice.issueDate)}</span></p><p className="mt-1 text-xs text-slate-500">{invoice.type === "credit" ? "فاتورة آجلة" : "فاتورة نقدية"}</p></div><p className="font-extrabold text-[#9c711a]">المتبقي: {invoice.dueAmount} {invoice.currencyCode}</p></div>) : <p className="p-5 text-center text-sm text-slate-500">لا توجد فواتير لهذا الحساب.</p>}</div></div><div className="rounded-2xl border border-[#dce8e5]"><h3 className="border-b border-[#e8f0ee] px-4 py-3 font-extrabold text-[#083f4c]">سندات القبض</h3><div className="divide-y divide-[#edf3f1]">{statementQuery.data.receipts.length ? statementQuery.data.receipts.map(receipt => <div key={receipt.id} className="flex items-center justify-between px-4 py-3"><div><p className="font-bold text-[#083f4c]">{receipt.receiptNumber}</p><p className="mt-1 text-xs text-slate-500">{arabicDate(receipt.receiptDate)}</p></div><p className="font-extrabold text-[#08735d]">{receipt.amount} {receipt.currencyCode}</p></div>) : <p className="p-5 text-center text-sm text-slate-500">لا توجد سندات قبض لهذا الحساب.</p>}</div></div></div> : <EmptyState title="تعذر تحميل كشف الحساب" description="حاول فتح الكشف مرة أخرى." />}
+          {statementQuery.isLoading ? <ContactsSkeleton /> : statementQuery.data ? <div className="space-y-5 py-2"><div className="rounded-2xl border border-[#bcd9d2] bg-[#f4fbf8] p-4"><div className="mb-3"><h3 className="font-extrabold text-[#083f4c]">معاملات {statementQuery.data.contact.name}</h3><p className="mt-1 text-sm text-slate-600">{statementQuery.data.contact.type === "supplier" ? "سجّل بضاعة مسحوبة أو مبلغ حوالة للتاجر مباشرة من هنا." : "سجّل كل معاملة لهذا العميل من داخل حسابه دون الرجوع إلى صفحات أخرى."}</p></div><div className="flex flex-wrap gap-2">{statementQuery.data.contact.type === "supplier" ? (<><Button size="sm" onClick={() => { setQuickMerchant(statementQuery.data!.contact); setQuickMerchantMode("credit"); }} className="bg-[#b45309] hover:bg-[#92400e] font-bold"><ArrowDownLeft className="ml-1.5 h-4 w-4" />سحب بضاعة (له)</Button><Button size="sm" onClick={() => { setQuickMerchant(statementQuery.data!.contact); setQuickMerchantMode("debit"); }} className="bg-[#08735d] hover:bg-[#065f4c] font-bold"><ArrowUpRight className="ml-1.5 h-4 w-4" />مبلغ حوالة (عليه)</Button></>) : null}<Button size="sm" onClick={() => setClientActionMode("receipt")} className="bg-[#08735d] hover:bg-[#075d4b]"><HandCoins className="ml-1.5 h-4 w-4" />إضافة سند قبض</Button><Button size="sm" onClick={() => setClientActionMode("credit")} className="bg-[#9c711a] hover:bg-[#805c14]"><FilePlus2 className="ml-1.5 h-4 w-4" />فاتورة آجلة</Button><Button size="sm" variant="outline" onClick={() => setClientActionMode("cash")} className="border-[#0a6372] text-[#0a6372] hover:bg-[#eff8f5]"><FilePlus2 className="ml-1.5 h-4 w-4" />فاتورة نقدية</Button></div></div><div className="grid gap-3 sm:grid-cols-3">{["YER", "SAR", "USD"].map(currency => <div key={currency} className="rounded-xl border border-[#dce8e5] bg-[#fbfdfc] p-3"><p className="text-xs text-slate-500">المتبقي {currency}</p><p className="mt-1 font-extrabold text-[#9c711a]">{new Intl.NumberFormat("ar-YE", { minimumFractionDigits: 2 }).format(statementTotals[currency] ?? 0)}</p></div>)}</div><div className="rounded-2xl border border-[#dce8e5]"><h3 className="border-b border-[#e8f0ee] px-4 py-3 font-extrabold text-[#083f4c]">الفواتير</h3><div className="divide-y divide-[#edf3f1]">{statementQuery.data.invoices.length ? statementQuery.data.invoices.map(invoice => <div key={invoice.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-bold text-[#083f4c]">{invoice.invoiceNumber} <span className="text-xs font-medium text-slate-500">· {arabicDate(invoice.issueDate)}</span></p><p className="mt-1 text-xs text-slate-500">{invoice.type === "credit" ? "فاتورة آجلة" : "فاتورة نقدية"}</p></div><p className="font-extrabold text-[#9c711a]">المتبقي: {invoice.dueAmount} {invoice.currencyCode}</p></div>) : <p className="p-5 text-center text-sm text-slate-500">لا توجد فواتير لهذا الحساب.</p>}</div></div><div className="rounded-2xl border border-[#dce8e5]"><h3 className="border-b border-[#e8f0ee] px-4 py-3 font-extrabold text-[#083f4c]">سندات القبض</h3><div className="divide-y divide-[#edf3f1]">{statementQuery.data.receipts.length ? statementQuery.data.receipts.map(receipt => <div key={receipt.id} className="flex items-center justify-between px-4 py-3"><div><p className="font-bold text-[#083f4c]">{receipt.receiptNumber}</p><p className="mt-1 text-xs text-slate-500">{arabicDate(receipt.receiptDate)}</p></div><p className="font-extrabold text-[#08735d]">{receipt.amount} {receipt.currencyCode}</p></div>) : <p className="p-5 text-center text-sm text-slate-500">لا توجد سندات قبض لهذا الحساب.</p>}</div></div></div> : <EmptyState title="تعذر تحميل كشف الحساب" description="حاول فتح الكشف مرة أخرى." />}
         </DialogContent>
       </Dialog>
       <Dialog open={statementEditOpen} onOpenChange={open => { if (!open) closeStatementEdit(); }}>
@@ -207,6 +210,22 @@ export default function ContactsPage() {
         </DialogContent>
       </Dialog>
       {statementQuery.data ? <ClientTransactionDialog contact={statementQuery.data.contact} mode={clientActionMode} onClose={() => setClientActionMode(null)} onSuccess={() => { setClientActionMode(null); utils.accounting.contactStatement.invalidate({ contactId: statementQuery.data!.contact.id }); }} /> : null}
+      <MerchantTransactionDialog
+        merchant={quickMerchant ?? { id: 0, name: "" }}
+        mode={quickMerchantMode}
+        onClose={() => {
+          setQuickMerchant(null);
+          setQuickMerchantMode(null);
+        }}
+        onSuccess={() => {
+          setQuickMerchant(null);
+          setQuickMerchantMode(null);
+          utils.accounting.contacts.invalidate();
+          if (statementContactId) {
+            utils.accounting.contactStatement.invalidate({ contactId: statementContactId });
+          }
+        }}
+      />
     </div>
   );
 }

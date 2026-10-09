@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, lte, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, ne, sql } from "drizzle-orm";
 import {
   accountCategories,
   appSettings,
@@ -21,6 +21,7 @@ import {
   individualSubscriptions,
   invoiceItems,
   invoices,
+  merchantTransactions,
   movementCategories,
   receiptAllocations,
   receipts,
@@ -2061,14 +2062,213 @@ export async function restoreBackupSnapshot(userId: number, snapshotId: number) 
   return { snapshotId, fileName: snapshot.fileName, protectiveSnapshot: protectiveSnapshot.fileName };
 }
 
+export interface CreateMerchantTransactionInput {
+  contactId: number;
+  direction: "credit" | "debit"; // 'credit' = له (بضاعة مسحوبة / استحقاق للتاجر), 'debit' = عليه (سداد / مبلغ حوالة للتاجر)
+  transactionType?: "purchase" | "transfer";
+  invoiceNumber?: string; // رقم الفاتورة
+  transferAmount?: string; // مبلغ الحوالة
+  amount: string; // المبلغ الإجمالي
+  currencyCode?: "YER" | "SAR" | "USD";
+  exchangeRateToBase?: string;
+  details?: string; // التفاصيل والتسعير (كم سعرت من التاجر هذا والبيان)
+  transactionDate: Date;
+  cashAccountId?: number; // الحساب / الصندوق المدفوع منه (في حال كانت حوالة مدفوعة من صندوق/بنك)
+  deductFromCash?: boolean; // خصم المبلغ من الصندوق فعلياً
+  notes?: string;
+}
+
+export interface UpdateMerchantTransactionInput {
+  id: number;
+  direction?: "credit" | "debit";
+  transactionType?: "purchase" | "transfer";
+  invoiceNumber?: string;
+  transferAmount?: string;
+  amount?: string;
+  currencyCode?: "YER" | "SAR" | "USD";
+  details?: string;
+  transactionDate?: Date;
+  notes?: string;
+}
+
+export async function createMerchantTransaction(userId: number, input: CreateMerchantTransactionInput) {
+  const db = await requireDb();
+  const contact = await getActiveContact(db, input.contactId);
+  const amountCents = moneyToCents(input.amount);
+  if (amountCents <= 0n) throw new Error("مبلغ العملية يجب أن يكون أكبر من صفر");
+
+  const currencyCode = input.currencyCode || "YER";
+  const exchangeRateToBase = input.exchangeRateToBase || "1";
+  rateToMicros(exchangeRateToBase);
+
+  return db.transaction(async tx => {
+    await getActiveCurrency(tx, currencyCode);
+
+    let cashAccount: any = null;
+    const shouldDeduct = input.direction === "debit" && Boolean(input.cashAccountId) && input.deductFromCash !== false;
+
+    if (shouldDeduct && input.cashAccountId) {
+      cashAccount = await resolveCashAccount(tx, input.cashAccountId);
+      await lockCashAccountCurrencies(tx, cashAccount.id, [currencyCode]);
+      await debitTrackedCashBalance(tx, cashAccount.id, currencyCode, amountCents);
+    }
+
+    const result = await tx.insert(merchantTransactions).values({
+      contactId: input.contactId,
+      direction: input.direction,
+      transactionType: input.transactionType || (input.direction === "credit" ? "purchase" : "transfer"),
+      invoiceNumber: input.invoiceNumber?.trim() || null,
+      transferAmount: input.transferAmount?.trim() || (input.direction === "debit" ? input.amount : null),
+      amount: centsToMoney(amountCents),
+      currencyCode,
+      exchangeRateToBase,
+      details: input.details?.trim() || null,
+      transactionDate: input.transactionDate,
+      cashAccountId: cashAccount?.id || (input.cashAccountId ?? null),
+      notes: input.notes?.trim() || null,
+      createdByUserId: userId,
+    });
+
+    const txId = Number(result[0].insertId);
+
+    if (shouldDeduct && cashAccount) {
+      await tx.insert(cashMovements).values({
+        direction: "out",
+        type: "expense",
+        currencyCode,
+        amount: centsToMoney(amountCents),
+        occurredAt: input.transactionDate,
+        sourceType: "merchant_transaction",
+        sourceId: txId,
+        cashAccountId: cashAccount.id,
+        description: `حوالة / سداد للتاجر: ${contact.name}${input.invoiceNumber ? ` — فاتورة: ${input.invoiceNumber}` : ""}`,
+        createdByUserId: userId,
+      });
+    }
+
+    await writeAudit(tx, userId, "create", "merchant_transaction", txId, {
+      contactId: input.contactId,
+      contactName: contact.name,
+      direction: input.direction,
+      invoiceNumber: input.invoiceNumber,
+      amount: centsToMoney(amountCents),
+      currencyCode,
+      details: input.details,
+    });
+
+    return { id: txId };
+  });
+}
+
+export async function updateMerchantTransaction(userId: number, input: UpdateMerchantTransactionInput) {
+  const db = await requireDb();
+  const [existing] = await db.select().from(merchantTransactions).where(eq(merchantTransactions.id, input.id)).limit(1);
+  if (!existing) throw new Error("حركة التاجر غير موجودة");
+
+  const updateSet: Record<string, any> = {};
+  if (input.direction) updateSet.direction = input.direction;
+  if (input.transactionType) updateSet.transactionType = input.transactionType;
+  if (input.invoiceNumber !== undefined) updateSet.invoiceNumber = input.invoiceNumber?.trim() || null;
+  if (input.transferAmount !== undefined) updateSet.transferAmount = input.transferAmount?.trim() || null;
+  if (input.amount !== undefined) {
+    const amtCents = moneyToCents(input.amount);
+    if (amtCents <= 0n) throw new Error("المبلغ يجب أن يكون أكبر من صفر");
+    updateSet.amount = centsToMoney(amtCents);
+  }
+  if (input.currencyCode) updateSet.currencyCode = input.currencyCode;
+  if (input.details !== undefined) updateSet.details = input.details?.trim() || null;
+  if (input.transactionDate) updateSet.transactionDate = input.transactionDate;
+  if (input.notes !== undefined) updateSet.notes = input.notes?.trim() || null;
+
+  await db.update(merchantTransactions).set(updateSet).where(eq(merchantTransactions.id, input.id));
+  await writeAudit(db, userId, "update", "merchant_transaction", input.id, { ...updateSet });
+  return { id: input.id };
+}
+
+export async function deleteMerchantTransaction(userId: number, id: number) {
+  const db = await requireDb();
+  const [existing] = await db.select().from(merchantTransactions).where(eq(merchantTransactions.id, id)).limit(1);
+  if (!existing) throw new Error("حركة التاجر غير موجودة");
+
+  return db.transaction(async tx => {
+    const [linkedMovement] = await tx
+      .select()
+      .from(cashMovements)
+      .where(and(eq(cashMovements.sourceType, "merchant_transaction"), eq(cashMovements.sourceId, id)))
+      .limit(1);
+
+    if (linkedMovement && linkedMovement.cashAccountId) {
+      const amountCents = moneyToCents(linkedMovement.amount);
+      await adjustTrackedCashBalance(tx, linkedMovement.cashAccountId, linkedMovement.currencyCode, amountCents);
+      await tx.delete(cashMovements).where(eq(cashMovements.id, linkedMovement.id));
+    }
+
+    await tx.delete(merchantTransactions).where(eq(merchantTransactions.id, id));
+    await writeAudit(tx, userId, "delete", "merchant_transaction", id, { ...existing });
+    return { success: true };
+  });
+}
+
+export async function listMerchantTransactions(contactId: number) {
+  const db = await requireDb();
+  const rows = await db
+    .select({
+      transaction: merchantTransactions,
+      cashAccountName: cashAccounts.name,
+      cashAccountType: cashAccounts.type,
+    })
+    .from(merchantTransactions)
+    .leftJoin(cashAccounts, eq(merchantTransactions.cashAccountId, cashAccounts.id))
+    .where(eq(merchantTransactions.contactId, contactId))
+    .orderBy(asc(merchantTransactions.transactionDate), asc(merchantTransactions.id));
+
+  let runningBalance = 0;
+  let totalCredit = 0; // إجمالي المسحوب (له)
+  let totalDebit = 0;  // إجمالي الحوالات والمسدد (عليه)
+
+  const items = rows.map((row: any) => {
+    const amt = Number(row.transaction.amount || 0);
+    if (row.transaction.direction === "credit") {
+      totalCredit += amt;
+      runningBalance += amt;
+    } else {
+      totalDebit += amt;
+      runningBalance -= amt;
+    }
+    return {
+      ...row.transaction,
+      cashAccountName: row.cashAccountName,
+      cashAccountType: row.cashAccountType,
+      runningBalance,
+    };
+  });
+
+  return {
+    items,
+    totalCredit,
+    totalDebit,
+    netBalance: runningBalance,
+  };
+}
+
 export async function getContactStatement(contactId: number) {
   const db = await requireDb();
   const contact = await getActiveContact(db, contactId);
   const contactInvoices = await listInvoices();
   const contactReceipts = await listReceipts();
+  const allExpenses = await listExpenses();
+  const merchantTxData = await listMerchantTransactions(contactId);
+
   return {
     contact,
     invoices: contactInvoices.filter((invoice: any) => invoice.contactId === contactId),
     receipts: contactReceipts.filter((row: any) => row.receipt.contactId === contactId).map((row: any) => row.receipt),
+    expenses: allExpenses.filter((row: any) => row.expense.contactId === contactId).map((row: any) => row.expense),
+    merchantTransactions: merchantTxData.items,
+    merchantTotals: {
+      totalCredit: merchantTxData.totalCredit,
+      totalDebit: merchantTxData.totalDebit,
+      netBalance: merchantTxData.netBalance,
+    },
   };
 }

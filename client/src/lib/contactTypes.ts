@@ -1,7 +1,7 @@
 export const CONTACT_TYPE_OPTIONS = [
   { value: "customer", label: "عميل فردي" },
   { value: "grocery", label: "بقالة" },
-  { value: "supplier", label: "مورد" },
+  { value: "supplier", label: "التجار" },
   { value: "employee", label: "موظف" },
   { value: "other", label: "حساب عام" },
 ] as const;

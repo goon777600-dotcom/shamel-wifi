@@ -6,5 +6,6 @@ describe("أنواع حسابات العملاء", () => {
     expect(CONTACT_TYPE_OPTIONS.map(option => option.value)).toEqual(expect.arrayContaining(["customer", "grocery", "supplier", "employee"]));
     expect(CONTACT_TYPE_OPTIONS.map(option => option.value)).not.toContain("market");
     expect(contactTypeLabel.grocery).toBe("بقالة");
+    expect(contactTypeLabel.supplier).toBe("التجار");
   });
 });
