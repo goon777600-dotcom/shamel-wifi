@@ -83,6 +83,42 @@ import {
   syncBatchToRouter,
   testRouterConnection,
 } from "./wifiCards";
+import {
+  getInventoryStats,
+  listInventoryItems,
+  createInventoryItem,
+  updateInventoryItem,
+  deleteInventoryItem,
+  listInventorySites,
+  getSiteDetail,
+  createSite,
+  updateSite,
+  deleteSite,
+  dispatchEquipmentToSite,
+  returnEquipmentFromSite,
+  stockIn,
+  listInventoryMovements,
+  addSiteDevice,
+  updateSiteDevice,
+  deleteSiteDevice,
+  revealDevicePassword,
+  createDishLink,
+  deleteDishLink,
+  revealDishLinkPassword,
+  listHomeModems,
+  createHomeModem,
+  updateHomeModem,
+  deleteHomeModem,
+  revealHomeModemPassword,
+} from "./inventory";
+import {
+  getCardInventorySummary,
+  addPrintedStockBatch,
+  sellCardsToContact,
+  adjustCardStock,
+  listCardInventoryMovements,
+  saveCardInventoryProfile,
+} from "./cardInventory";
 
 export const CONTACT_TYPES = ["customer", "grocery", "supplier", "employee", "other"] as const;
 const contactTypeSchema = z.enum(CONTACT_TYPES);
@@ -649,6 +685,302 @@ export const appRouter = router({
         })
       )
       .mutation(({ ctx, input }) => purchaseInstantCard(ctx.user.id, input)),
+  }),
+  inventory: router({
+    getStats: adminProcedure.query(() => getInventoryStats()),
+    listItems: adminProcedure
+      .input(
+        z
+          .object({
+            category: z.enum(["solar_power", "network"]).optional(),
+            itemType: z.string().optional(),
+            search: z.string().optional(),
+            onlyLowStock: z.boolean().optional(),
+          })
+          .optional()
+      )
+      .query(({ input }) => listInventoryItems(input)),
+    createItem: adminProcedure
+      .input(
+        z.object({
+          name: z.string().trim().min(1, "اسم الصنف مطلوب").max(160),
+          category: z.enum(["solar_power", "network"]),
+          itemType: z.enum([
+            "solar_panel",
+            "battery",
+            "solar_controller",
+            "power_output_inverter",
+            "electrical_accessories",
+            "antenna",
+            "dish",
+            "modem_router",
+            "switch",
+            "network_cables_accessories",
+            "other",
+          ]),
+          modelOrSpecs: z.string().trim().max(200).optional(),
+          unit: z.string().trim().max(30).default("قطعة"),
+          warehouseStock: z.number().int().min(0).default(0),
+          minStockAlert: z.number().int().min(0).default(0),
+          notes: z.string().trim().optional(),
+        })
+      )
+      .mutation(({ ctx, input }) => createInventoryItem({ ...input, userId: ctx.user.id })),
+    updateItem: adminProcedure
+      .input(
+        z.object({
+          id: z.number().int().positive(),
+          data: z.object({
+            name: z.string().trim().min(1).max(160).optional(),
+            modelOrSpecs: z.string().trim().max(200).optional(),
+            unit: z.string().trim().max(30).optional(),
+            minStockAlert: z.number().int().min(0).optional(),
+            notes: z.string().trim().optional(),
+          }),
+        })
+      )
+      .mutation(({ input }) => updateInventoryItem(input.id, input.data)),
+    deleteItem: adminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(({ input }) => deleteInventoryItem(input.id)),
+    listSites: adminProcedure.query(() => listInventorySites()),
+    getSiteDetail: adminProcedure
+      .input(z.object({ siteId: z.number().int().positive() }))
+      .query(({ input }) => getSiteDetail(input.siteId)),
+    createSite: adminProcedure
+      .input(
+        z.object({
+          name: z.string().trim().min(1, "اسم الموقع مطلوب").max(160),
+          area: z.string().trim().max(160).optional(),
+          locationNotes: z.string().trim().optional(),
+          status: z.enum(["active", "maintenance", "inactive"]).default("active"),
+        })
+      )
+      .mutation(({ input }) => createSite(input)),
+    updateSite: adminProcedure
+      .input(
+        z.object({
+          id: z.number().int().positive(),
+          data: z.object({
+            name: z.string().trim().min(1).max(160).optional(),
+            area: z.string().trim().max(160).optional(),
+            locationNotes: z.string().trim().optional(),
+            status: z.enum(["active", "maintenance", "inactive"]).optional(),
+          }),
+        })
+      )
+      .mutation(({ input }) => updateSite(input.id, input.data)),
+    deleteSite: adminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(({ input }) => deleteSite(input.id)),
+    dispatchEquipment: adminProcedure
+      .input(
+        z.object({
+          siteId: z.number().int().positive(),
+          itemId: z.number().int().positive(),
+          quantity: z.number().int().positive("الكمية يجب أن تكون أكبر من صفر"),
+          recipientOrTech: z.string().trim().max(120).optional(),
+          reasonOrNotes: z.string().trim().optional(),
+        })
+      )
+      .mutation(({ ctx, input }) => dispatchEquipmentToSite({ ...input, userId: ctx.user.id })),
+    returnEquipment: adminProcedure
+      .input(
+        z.object({
+          siteId: z.number().int().positive(),
+          itemId: z.number().int().positive(),
+          quantity: z.number().int().positive("الكمية يجب أن تكون أكبر من صفر"),
+          recipientOrTech: z.string().trim().max(120).optional(),
+          reasonOrNotes: z.string().trim().optional(),
+        })
+      )
+      .mutation(({ ctx, input }) => returnEquipmentFromSite({ ...input, userId: ctx.user.id })),
+    stockIn: adminProcedure
+      .input(
+        z.object({
+          itemId: z.number().int().positive(),
+          quantity: z.number().int().positive("الكمية يجب أن تكون أكبر من صفر"),
+          supplierOrSource: z.string().trim().max(120).optional(),
+          reasonOrNotes: z.string().trim().optional(),
+        })
+      )
+      .mutation(({ ctx, input }) => stockIn({ ...input, userId: ctx.user.id })),
+    listMovements: adminProcedure
+      .input(
+        z
+          .object({
+            siteId: z.number().int().positive().optional(),
+            itemId: z.number().int().positive().optional(),
+            type: z.string().optional(),
+            limit: z.number().int().positive().optional(),
+          })
+          .optional()
+      )
+      .query(({ input }) => listInventoryMovements(input)),
+    addSiteDevice: adminProcedure
+      .input(
+        z.object({
+          siteId: z.number().int().positive(),
+          name: z.string().trim().min(1).max(160),
+          deviceType: z.enum(["dish", "modem", "switch", "antenna", "solar_controller", "inverter", "other"]),
+          dishRole: z.enum(["transmitter", "receiver", "none"]).default("none"),
+          ipAddress: z.string().trim().max(64).optional(),
+          macAddress: z.string().trim().max(32).optional(),
+          username: z.string().trim().max(100).optional(),
+          password: z.string().trim().optional(),
+          notes: z.string().trim().optional(),
+          deductFromItemId: z.number().int().positive().optional(),
+        })
+      )
+      .mutation(({ ctx, input }) => addSiteDevice({ ...input, userId: ctx.user.id })),
+    updateSiteDevice: adminProcedure
+      .input(
+        z.object({
+          id: z.number().int().positive(),
+          data: z.object({
+            name: z.string().trim().min(1).max(160).optional(),
+            deviceType: z.enum(["dish", "modem", "switch", "antenna", "solar_controller", "inverter", "other"]).optional(),
+            dishRole: z.enum(["transmitter", "receiver", "none"]).optional(),
+            ipAddress: z.string().trim().max(64).optional(),
+            macAddress: z.string().trim().max(32).optional(),
+            username: z.string().trim().max(100).optional(),
+            password: z.string().trim().optional(),
+            notes: z.string().trim().optional(),
+          }),
+        })
+      )
+      .mutation(({ input }) => updateSiteDevice(input.id, input.data)),
+    deleteSiteDevice: adminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(({ input }) => deleteSiteDevice(input.id)),
+    revealDevicePassword: adminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(({ input }) => revealDevicePassword(input.id)),
+    createDishLink: adminProcedure
+      .input(
+        z.object({
+          siteId: z.number().int().positive(),
+          transmitterDeviceId: z.number().int().positive(),
+          receiverDeviceId: z.number().int().positive(),
+          linkPassword: z.string().trim().optional(),
+          notes: z.string().trim().optional(),
+        })
+      )
+      .mutation(({ input }) => createDishLink(input)),
+    deleteDishLink: adminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(({ input }) => deleteDishLink(input.id)),
+    revealDishLinkPassword: adminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(({ input }) => revealDishLinkPassword(input.id)),
+    listHomeModems: adminProcedure
+      .input(
+        z
+          .object({
+            search: z.string().optional(),
+            siteId: z.number().int().positive().optional(),
+          })
+          .optional()
+      )
+      .query(({ input }) => listHomeModems(input)),
+    createHomeModem: adminProcedure
+      .input(
+        z.object({
+          ownerName: z.string().trim().min(1, "اسم صاحب المودم مطلوب").max(160),
+          ipAddress: z.string().trim().min(1, "عنوان IP مطلوب").max(64),
+          siteId: z.number().int().positive().optional(),
+          username: z.string().trim().max(100).optional(),
+          password: z.string().trim().optional(),
+          notes: z.string().trim().optional(),
+          deductFromItemId: z.number().int().positive().optional(),
+        })
+      )
+      .mutation(({ ctx, input }) => createHomeModem({ ...input, userId: ctx.user.id })),
+    updateHomeModem: adminProcedure
+      .input(
+        z.object({
+          id: z.number().int().positive(),
+          data: z.object({
+            ownerName: z.string().trim().min(1).max(160).optional(),
+            ipAddress: z.string().trim().min(1).max(64).optional(),
+            siteId: z.number().int().positive().nullable().optional(),
+            username: z.string().trim().max(100).optional(),
+            password: z.string().trim().optional(),
+            notes: z.string().trim().optional(),
+          }),
+        })
+      )
+      .mutation(({ input }) => updateHomeModem(input.id, input.data)),
+    deleteHomeModem: adminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(({ input }) => deleteHomeModem(input.id)),
+    revealHomeModemPassword: adminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(({ input }) => revealHomeModemPassword(input.id)),
+  }),
+  cardInventory: router({
+    summary: adminProcedure.query(() => getCardInventorySummary()),
+    addPrintedStock: adminProcedure
+      .input(
+        z.object({
+          profileId: z.number().int().positive(),
+          quantity: z.number().int().positive(),
+          notes: z.string().trim().max(1000).optional(),
+          movementDate: dateSchema.optional(),
+        })
+      )
+      .mutation(({ ctx, input }) => addPrintedStockBatch(ctx.user.id, input)),
+    sellCards: adminProcedure
+      .input(
+        z.object({
+          profileId: z.number().int().positive(),
+          contactId: z.number().int().positive(),
+          quantity: z.number().int().positive(),
+          unitPrice: z.string().trim().optional(),
+          paymentType: z.enum(["cash", "credit"]),
+          cashAccountId: z.number().int().positive().optional(),
+          discountAmount: z.string().trim().optional(),
+          notes: z.string().trim().max(1000).optional(),
+          issueDate: dateSchema.optional(),
+        })
+      )
+      .mutation(({ ctx, input }) => sellCardsToContact(ctx.user.id, input)),
+    adjustStock: adminProcedure
+      .input(
+        z.object({
+          profileId: z.number().int().positive(),
+          newStock: z.number().int().nonnegative(),
+          reason: z.enum(["adjustment", "damaged"]),
+          notes: z.string().trim().max(1000).optional(),
+        })
+      )
+      .mutation(({ ctx, input }) => adjustCardStock(ctx.user.id, input)),
+    movements: adminProcedure
+      .input(
+        z
+          .object({
+            profileId: z.number().int().positive().optional(),
+            contactId: z.number().int().positive().optional(),
+            movementType: z.string().optional(),
+            limit: z.number().int().positive().optional(),
+          })
+          .optional()
+      )
+      .query(({ input }) => listCardInventoryMovements(input)),
+    saveProfile: adminProcedure
+      .input(
+        z.object({
+          id: z.number().int().positive().optional(),
+          name: z.string().trim().min(1).max(160),
+          price: z.string().trim(),
+          currencyCode: z.string().trim().max(3).optional(),
+          timeLimit: z.string().trim().max(60).optional(),
+          dataLimitLabel: z.string().trim().max(60).optional(),
+          notes: z.string().trim().max(500).optional(),
+          initialStock: z.number().int().nonnegative().optional(),
+        })
+      )
+      .mutation(({ input }) => saveCardInventoryProfile(input)),
   }),
 });
 
