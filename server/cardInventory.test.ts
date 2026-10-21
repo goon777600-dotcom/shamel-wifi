@@ -111,4 +111,63 @@ describe("Printed Card Inventory & Distribution Accounting", () => {
 
     expect(finalCash).toBe(initialCash);
   }, 35000);
+
+  it("تسجيل فاتورة آجلة من شاشة الفواتير بتصنيف مبيعات الكروت يخصم الكمية تدريجياً من مخزن الكروت", async () => {
+    const db = await getDb();
+    if (!db) throw new Error("No DB");
+
+    const { createInvoice } = await import("./accounting");
+
+    // Ensure profile has stock
+    const summary = await getCardInventorySummary();
+    const profile = summary.profiles[0];
+    await addPrintedStockBatch(1, {
+      profileId: profile.id,
+      quantity: 50,
+      notes: "رصيد لفحص الفاتورة الآجلة",
+    });
+
+    const [updatedProfile]: any = await db
+      .select()
+      .from(wifiCardProfiles)
+      .where(eq(wifiCardProfiles.id, profile.id));
+    const stockBefore = Number(updatedProfile.currentStock || 0);
+
+    // Get contact (e.g. خالد الخضر)
+    const [contact] = await db.select().from(contacts).where(eq(contacts.name, "خالد الخضر")).limit(1);
+    const targetContact = contact || (await db.select().from(contacts).limit(1))[0];
+
+    // Create credit invoice with 20 cards
+    const invRes = await createInvoice(1, {
+      contactId: targetContact.id,
+      movementCategoryId: 1, // مبيعات الكروت
+      cardProfileId: profile.id,
+      cardQuantity: 20,
+      type: "credit",
+      issueDate: new Date(),
+      currencyCode: "YER",
+      exchangeRateToBase: "1",
+      discountAmount: "0",
+      notes: "فاتورة آجلة تجريبية لخالد الخضر",
+      items: [
+        {
+          description: `كروت واي فاي — ${profile.name}`,
+          quantity: "20",
+          unitPrice: "490.00",
+        },
+      ],
+    });
+
+    expect(invRes.id).toBeDefined();
+    expect(invRes.invoiceNumber).toMatch(/^FAT-/);
+
+    // Verify stock decreased by exactly 20 cards!
+    const [profileAfter]: any = await db
+      .select()
+      .from(wifiCardProfiles)
+      .where(eq(wifiCardProfiles.id, profile.id));
+    const stockAfter = Number(profileAfter.currentStock || 0);
+
+    expect(stockAfter).toBe(stockBefore - 20);
+  }, 35000);
 });

@@ -10,29 +10,22 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import {
-  AlertCircle,
   ArrowDownLeft,
   ArrowUpRight,
   Boxes,
   CheckCircle2,
-  Clock,
   Coins,
-  CreditCard,
   FileText,
   Landmark,
-  Layers,
   Plus,
   Printer,
-  RefreshCw,
   Search,
   ShoppingCart,
-  SlidersHorizontal,
-  Store,
   Tag,
   Ticket,
+  Trash2,
   TrendingUp,
   UserPlus,
 } from "lucide-react";
@@ -88,12 +81,10 @@ export default function CardInventoryPage() {
   const [adjustReason, setAdjustReason] = useState<"adjustment" | "damaged">("adjustment");
   const [adjustNotes, setAdjustNotes] = useState<string>("");
 
-  // 4. New/Edit Profile Form
+  // 4. New/Edit Profile Form (Purely Name & Price - no time/data limit)
   const [editingProfileId, setEditingProfileId] = useState<number | null>(null);
   const [profileName, setProfileName] = useState("");
   const [profilePrice, setProfilePrice] = useState("");
-  const [profileTimeLimit, setProfileTimeLimit] = useState("");
-  const [profileDataLimit, setProfileDataLimit] = useState("");
   const [profileNotes, setProfileNotes] = useState("");
   const [profileInitialStock, setProfileInitialStock] = useState("0");
 
@@ -133,7 +124,6 @@ export default function CardInventoryPage() {
       toast.success(
         `تم إصدار الفاتورة ${res.invoiceNumber} وصرف ${res.movement.quantity} كرت! المتبقي بالمخزن: ${res.newStock} كرت.`
       );
-      // Auto open invoice preview
       setViewInvoiceId(res.invoiceId);
     },
     onError: err => toast.error(err.message),
@@ -154,6 +144,14 @@ export default function CardInventoryPage() {
       utils.cardInventory.summary.invalidate();
       setProfileDialogOpen(false);
       toast.success("تم حفظ فئة الكروت بنجاح");
+    },
+    onError: err => toast.error(err.message),
+  });
+
+  const deleteProfileMutation = trpc.wifiCards.deleteProfile.useMutation({
+    onSuccess: () => {
+      utils.cardInventory.summary.invalidate();
+      toast.success("تم حذف الفئة بنجاح");
     },
     onError: err => toast.error(err.message),
   });
@@ -223,7 +221,6 @@ export default function CardInventoryPage() {
     setSellNotes("");
     setSellDate(new Date().toISOString().slice(0, 10));
 
-    // Default cash account to first cash account
     if (cashQuery.data?.accounts?.[0]) {
       setSellCashAccountId(String(cashQuery.data.accounts[0].id));
     }
@@ -243,8 +240,6 @@ export default function CardInventoryPage() {
     setEditingProfileId(null);
     setProfileName("");
     setProfilePrice("");
-    setProfileTimeLimit("");
-    setProfileDataLimit("");
     setProfileNotes("");
     setProfileInitialStock("0");
     setProfileDialogOpen(true);
@@ -254,8 +249,6 @@ export default function CardInventoryPage() {
     setEditingProfileId(profile.id);
     setProfileName(profile.name);
     setProfilePrice(String(profile.price));
-    setProfileTimeLimit(profile.timeLimit || "");
-    setProfileDataLimit(profile.dataLimitLabel || "");
     setProfileNotes(profile.notes || "");
     setProfileInitialStock(String(profile.currentStock || 0));
     setProfileDialogOpen(true);
@@ -338,11 +331,9 @@ export default function CardInventoryPage() {
     }
     saveProfileMutation.mutate({
       id: editingProfileId || undefined,
-      name: profileName,
-      price: profilePrice,
+      name: profileName.trim(),
+      price: profilePrice.trim(),
       currencyCode: "YER",
-      timeLimit: profileTimeLimit || undefined,
-      dataLimitLabel: profileDataLimit || undefined,
       notes: profileNotes || undefined,
       initialStock: editingProfileId ? undefined : Number(profileInitialStock || 0),
     });
@@ -432,19 +423,19 @@ export default function CardInventoryPage() {
       {/* Section 1: Card Profiles & Stock Grid */}
       <SectionCard
         title="أرصدة فئات الكروت المطبوعة"
-        subtitle="متابعة الرصيد المتبقي من كل فئة وإجراء عمليات التوريد أو البيع بضغطة زر واحدة."
+        subtitle="متابعة الرصيد المتبقي من كل فئة وإجراء عمليات التوريد أو البيع أو التعديل."
       >
         <div className="p-5">
           {summaryQuery.isLoading ? (
             <div className="py-12 text-center text-slate-400">جارٍ تحميل أرصدة الفئات...</div>
           ) : !summary?.profiles?.length ? (
-            <div className="text-center py-6">
+            <div className="text-center py-8">
               <EmptyState
                 title="لا توجد فئات كروت مضافة بعد"
-                description="أضف فئات الكروت (مثل كرت أبو 500، كرت أبو 1000) للبدء في توريدها وصرفها."
+                description="أضف فئات الكروت التي تستخدمها (مثل فئة 500 أو 1000) للبدء في توريدها وصرفها."
               />
               <Button onClick={openNewProfileDialog} className="mt-4 bg-[#0a6372] hover:bg-[#084e5a]">
-                <Plus className="ml-2 h-4 w-4" /> إضافة أول فئة كروت
+                <Plus className="ml-2 h-4 w-4" /> إضافة فئة كروت جديدة
               </Button>
             </div>
           ) : (
@@ -463,25 +454,34 @@ export default function CardInventoryPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <span className="inline-block rounded-lg bg-[#eff7f5] px-2.5 py-1 text-xs font-extrabold text-[#0a6372]">
-                          فئة {money(profile.price, profile.currencyCode)}
+                          سعر الكرت: {money(profile.price, profile.currencyCode)}
                         </span>
-                        <h3 className="mt-2 text-lg font-extrabold text-[#083f4c]">{profile.name}</h3>
-                        {(profile.timeLimit || profile.dataLimitLabel) && (
-                          <p className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                            {profile.timeLimit && <span>⏱️ {profile.timeLimit}</span>}
-                            {profile.dataLimitLabel && <span>🌐 {profile.dataLimitLabel}</span>}
-                          </p>
-                        )}
+                        <h3 className="mt-2 text-xl font-black text-[#083f4c]">{profile.name}</h3>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => openEditProfileDialog(profile)}
-                        className="h-8 w-8 p-0 text-slate-400 hover:text-[#0a6372]"
-                        title="تعديل الفئة"
-                      >
-                        <Tag className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => openEditProfileDialog(profile)}
+                          className="h-8 w-8 p-0 text-slate-400 hover:text-[#0a6372]"
+                          title="تعديل الفئة"
+                        >
+                          <Tag className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            if (window.confirm(`هل أنت متأكد من حذف ${profile.name}؟`)) {
+                              deleteProfileMutation.mutate({ id: profile.id });
+                            }
+                          }}
+                          className="h-8 w-8 p-0 text-slate-400 hover:text-red-600"
+                          title="حذف الفئة"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
 
                     {/* Stock Counter */}
@@ -733,7 +733,6 @@ export default function CardInventoryPage() {
             </DialogDescription>
           </DialogHeader>
 
-          {/* Important Accounting Clarification Alert */}
           <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3.5 text-xs text-emerald-900 leading-relaxed">
             <p className="font-extrabold flex items-center gap-1.5 mb-1">
               <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
@@ -791,7 +790,7 @@ export default function CardInventoryPage() {
               <Input
                 value={supplyNotes}
                 onChange={e => setSupplyNotes(e.target.value)}
-                placeholder="مثال: طباعة مطبعة الأمل - دفعة رقم 1"
+                placeholder="مثال: طباعة كروت دفعة 1"
               />
             </div>
 
@@ -1102,7 +1101,7 @@ export default function CardInventoryPage() {
       </Dialog>
 
       {/* ======================================================== */}
-      {/* MODAL 4: Create or Edit Card Profile                     */}
+      {/* MODAL 4: Create or Edit Card Profile (Simple: Name & Price)*/}
       {/* ======================================================== */}
       <Dialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen}>
         <DialogContent dir="rtl" className="sm:max-w-md">
@@ -1111,7 +1110,7 @@ export default function CardInventoryPage() {
               {editingProfileId ? "تعديل فئة الكروت" : "إضافة فئة كروت جديدة"}
             </DialogTitle>
             <DialogDescription>
-              تحديد اسم الفئة والسعر الرسمي (مثل: فئة 500 ريال، فئة 1000 ريال).
+              حدد اسم الفئة وسعر الكرت فقط (مثال: فئة 500 أو فئة 1000).
             </DialogDescription>
           </DialogHeader>
 
@@ -1122,7 +1121,7 @@ export default function CardInventoryPage() {
                 required
                 value={profileName}
                 onChange={e => setProfileName(e.target.value)}
-                placeholder="مثال: كرت 500 ريال - 24 ساعة"
+                placeholder="مثال: فئة 500 ريال أو فئة 1000 ريال"
               />
             </div>
 
@@ -1135,7 +1134,7 @@ export default function CardInventoryPage() {
                   step="any"
                   value={profilePrice}
                   onChange={e => setProfilePrice(e.target.value)}
-                  placeholder="500"
+                  placeholder="مثال: 500"
                 />
               </div>
 
@@ -1153,28 +1152,8 @@ export default function CardInventoryPage() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label className="font-bold text-[#083f4c]">مدة الصلاحية</Label>
-                <Input
-                  value={profileTimeLimit}
-                  onChange={e => setProfileTimeLimit(e.target.value)}
-                  placeholder="مثال: 24 ساعة"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="font-bold text-[#083f4c]">حجم الرصيد</Label>
-                <Input
-                  value={profileDataLimit}
-                  onChange={e => setProfileDataLimit(e.target.value)}
-                  placeholder="مثال: 1.5 جيجابايت"
-                />
-              </div>
-            </div>
-
             <div className="space-y-2">
-              <Label className="font-bold text-[#083f4c]">ملاحظات</Label>
+              <Label className="font-bold text-[#083f4c]">ملاحظات (اختياري)</Label>
               <Input
                 value={profileNotes}
                 onChange={e => setProfileNotes(e.target.value)}

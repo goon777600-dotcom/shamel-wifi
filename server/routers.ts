@@ -386,6 +386,8 @@ export const appRouter = router({
           exchangeRateToBase: rateSchema,
           cashAccountId: z.number().int().positive().optional(),
           discountAmount: nonNegativeMoneySchema.default("0"),
+          cardProfileId: z.number().int().positive().optional(),
+          cardQuantity: z.number().int().positive().optional(),
           notes: z.string().trim().max(3000).optional(),
           items: z
             .array(
