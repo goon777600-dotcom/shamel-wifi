@@ -28,8 +28,6 @@ import {
   servicePackages,
   subscriptions,
   users,
-  wifiCardProfiles,
-  cardInventoryMovements,
 } from "../drizzle/schema";
 import { getDb } from "./db";
 import { storageGetSignedUrl, storagePut } from "./storage";
@@ -926,8 +924,6 @@ export async function createInvoice(
     exchangeRateToBase: string;
     discountAmount: string;
     notes?: string;
-    cardProfileId?: number;
-    cardQuantity?: number;
     items: LineItemInput[];
   },
 ) {
@@ -983,54 +979,6 @@ export async function createInvoice(
         totalAmount: item.totalAmount,
       })),
     );
-
-    // If invoice is linked to card inventory (مبيعات الكروت), deduct stock atomically
-    if (input.cardProfileId) {
-      try {
-        const cardQty = Math.max(1, Math.floor(Number(input.cardQuantity || itemRows[0]?.quantity || 1)));
-        const [profile] = await tx
-          .select()
-          .from(wifiCardProfiles)
-          .where(eq(wifiCardProfiles.id, input.cardProfileId))
-          .limit(1);
-
-        if (profile) {
-          const oldStock = Number(profile.currentStock || 0);
-          const newStock = Math.max(0, oldStock - cardQty);
-
-          await tx
-            .update(wifiCardProfiles)
-            .set({
-              currentStock: newStock,
-              updatedAt: new Date(),
-            })
-            .where(eq(wifiCardProfiles.id, profile.id));
-
-          const dateStr = (input.issueDate || new Date()).toISOString().slice(0, 10).replace(/-/g, "");
-          const rand = Math.floor(Math.random() * 900 + 100);
-          await tx.insert(cardInventoryMovements).values({
-            movementNumber: `CRD-OUT-${dateStr}-${rand}`,
-            profileId: profile.id,
-            movementType: "sale_invoice",
-            quantity: cardQty,
-            unitPrice: itemRows[0]?.unitPrice ? String(itemRows[0].unitPrice) : profile.price,
-            totalAmount: centsToMoney(totalCents),
-            contactId: contact.id,
-            contactName: contact.name,
-            invoiceId,
-            invoiceNumber,
-            paymentType: input.type,
-            cashAccountId: input.type === "cash" && cashAccount ? cashAccount.id : null,
-            balanceAfter: newStock,
-            notes: input.notes?.trim() || `فاتورة ${input.type === 'cash' ? 'نقدية' : 'آجلة'} ${invoiceNumber} — ${contact.name}`,
-            createdByUserId: userId,
-            movementDate: input.issueDate,
-          });
-        }
-      } catch (cardErr: any) {
-        console.warn("Could not deduct from card inventory:", cardErr.message);
-      }
-    }
 
     if (input.type === "cash") {
       await tx.insert(cashMovements).values({

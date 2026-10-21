@@ -6,39 +6,15 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { CirclePlus, FileText, Minus, Plus, Printer, Search, Ticket } from "lucide-react";
+import { CirclePlus, FileText, Minus, Plus, Printer, Search } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 type InvoiceItemForm = { description: string; quantity: string; unitPrice: string };
-type InvoiceForm = {
-  contactId: string;
-  movementCategoryId: string;
-  cardProfileId: string;
-  cashAccountId: string;
-  type: "cash" | "credit";
-  issueDate: string;
-  currencyCode: "YER" | "SAR" | "USD";
-  exchangeRateToBase: string;
-  discountAmount: string;
-  notes: string;
-  items: InvoiceItemForm[];
-};
+type InvoiceForm = { contactId: string; movementCategoryId: string; cashAccountId: string; type: "cash" | "credit"; issueDate: string; currencyCode: "YER" | "SAR" | "USD"; exchangeRateToBase: string; discountAmount: string; notes: string; items: InvoiceItemForm[] };
 
 function invoiceBlank(categoryId?: number, cashAccountId = ""): InvoiceForm {
-  return {
-    contactId: "",
-    movementCategoryId: categoryId ? String(categoryId) : "",
-    cardProfileId: "",
-    cashAccountId,
-    type: "cash",
-    issueDate: new Date().toISOString().slice(0, 10),
-    currencyCode: "YER",
-    exchangeRateToBase: "1",
-    discountAmount: "0",
-    notes: "",
-    items: [{ description: "اشتراك إنترنت — شهر واحد", quantity: "1", unitPrice: "" }],
-  };
+  return { contactId: "", movementCategoryId: categoryId ? String(categoryId) : "", cashAccountId, type: "cash", issueDate: new Date().toISOString().slice(0, 10), currencyCode: "YER", exchangeRateToBase: "1", discountAmount: "0", notes: "", items: [{ description: "اشتراك إنترنت — شهر واحد", quantity: "1", unitPrice: "" }] };
 }
 
 export default function InvoicesPage() {
@@ -46,7 +22,6 @@ export default function InvoicesPage() {
   const contactsQuery = trpc.accounting.contacts.useQuery();
   const setupQuery = trpc.accounting.setup.useQuery();
   const cashQuery = trpc.accounting.cashSummary.useQuery();
-  const cardSummaryQuery = trpc.cardInventory.summary.useQuery();
   const utils = trpc.useUtils();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [documentId, setDocumentId] = useState<number | null>(null);
@@ -54,21 +29,9 @@ export default function InvoicesPage() {
   const [form, setForm] = useState<InvoiceForm>(invoiceBlank());
   const documentQuery = trpc.accounting.invoiceDocument.useQuery({ invoiceId: documentId ?? 0 }, { enabled: documentId !== null });
   const saleCategories = setupQuery.data?.movementCategories.filter(category => category.kind === "sale") ?? [];
-  const cardProfiles = cardSummaryQuery.data?.profiles ?? [];
-  const selectedCategory = saleCategories.find(c => c.id === Number(form.movementCategoryId));
-  const isCardSale = selectedCategory?.name.includes("كروت") || form.movementCategoryId === "1";
-  const selectedCardProfile = cardProfiles.find(p => p.id === Number(form.cardProfileId));
-
   const createMutation = trpc.accounting.createInvoice.useMutation({
     onSuccess: async result => {
-      await Promise.all([
-        utils.accounting.invoices.invalidate(),
-        utils.accounting.dashboard.invalidate(),
-        utils.accounting.cashSummary.invalidate(),
-        utils.accounting.openInvoices.invalidate(),
-        utils.cardInventory.summary.invalidate(),
-        utils.cardInventory.movements.invalidate(),
-      ]);
+      await Promise.all([utils.accounting.invoices.invalidate(), utils.accounting.dashboard.invalidate(), utils.accounting.cashSummary.invalidate(), utils.accounting.openInvoices.invalidate()]);
       toast.success(`تم إصدار الفاتورة ${result.invoiceNumber}`);
       closeDialog();
     },
@@ -89,18 +52,8 @@ export default function InvoicesPage() {
     event.preventDefault();
     if (!form.contactId || !form.movementCategoryId || (form.type === "cash" && !form.cashAccountId)) { toast.error("اختر العميل والتصنيف والحساب المستلم للفاتورة النقدية"); return; }
     createMutation.mutate({
-      contactId: Number(form.contactId),
-      movementCategoryId: Number(form.movementCategoryId),
-      cardProfileId: form.cardProfileId ? Number(form.cardProfileId) : undefined,
-      cardQuantity: form.cardProfileId ? Number(form.items[0]?.quantity || 1) : undefined,
-      type: form.type,
-      issueDate: new Date(`${form.issueDate}T12:00:00`),
-      currencyCode: form.currencyCode,
-      exchangeRateToBase: form.exchangeRateToBase,
-      cashAccountId: form.type === "cash" ? Number(form.cashAccountId) : undefined,
-      discountAmount: form.discountAmount,
-      notes: form.notes || undefined,
-      items: form.items,
+      contactId: Number(form.contactId), movementCategoryId: Number(form.movementCategoryId), type: form.type, issueDate: new Date(`${form.issueDate}T12:00:00`), currencyCode: form.currencyCode,
+      exchangeRateToBase: form.exchangeRateToBase, cashAccountId: form.type === "cash" ? Number(form.cashAccountId) : undefined, discountAmount: form.discountAmount, notes: form.notes || undefined, items: form.items,
     });
   }
 
@@ -122,63 +75,6 @@ export default function InvoicesPage() {
               <Field label="تاريخ الفاتورة"><Input type="date" required value={form.issueDate} onChange={event => setForm({ ...form, issueDate: event.target.value })} /></Field>
               <Field label="تصنيف المبيعات"><select required value={form.movementCategoryId} onChange={event => setForm({ ...form, movementCategoryId: event.target.value })} className="form-select"><option value="">اختر التصنيف</option>{saleCategories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></Field>
             </div>
-
-            {isCardSale && (
-              <div className="rounded-2xl border-2 border-[#0a6372]/30 bg-[#eff8f5] p-4 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Ticket className="h-5 w-5 text-[#0a6372]" />
-                    <span className="font-extrabold text-[#083f4c] text-sm">
-                      ربط مع مخزن الكروت (خصم تدريجي من رصيد الكروت بالمخزن)
-                    </span>
-                  </div>
-                  {selectedCardProfile && (
-                    <span className="rounded-lg bg-white px-2.5 py-1 text-xs font-black text-[#0a6372] shadow-sm">
-                      المتوفر في المخزن: {selectedCardProfile.currentStock} كرت
-                    </span>
-                  )}
-                </div>
-
-                <Field label="فئة الكرت المراد خصمها من المخزن">
-                  <select
-                    value={form.cardProfileId}
-                    onChange={e => {
-                      const profileId = e.target.value;
-                      const profile = cardProfiles.find(p => p.id === Number(profileId));
-                      setForm(curr => ({
-                        ...curr,
-                        cardProfileId: profileId,
-                        items: profile
-                          ? curr.items.map((item, idx) =>
-                              idx === 0
-                                ? {
-                                    ...item,
-                                    description: `كروت واي فاي — ${profile.name}`,
-                                    unitPrice: String(profile.price),
-                                  }
-                                : item
-                            )
-                          : curr.items,
-                      }));
-                    }}
-                    className="form-select font-bold text-[#083f4c]"
-                  >
-                    <option value="">-- اختياري: اختر فئة الكرت لخصم الكمية من المخزن --</option>
-                    {cardProfiles.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} (سعر الكرت: {money(p.price, "YER")} — المتوفر بالمخزن: {p.currentStock} كرت)
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-
-                {form.cardProfileId && (
-                  <p className="text-xs text-[#0a6372] font-bold">
-                    ✓ عند اعتماد هذه الفاتورة سيتم خصم ({form.items[0]?.quantity || 0} كرت) تلقائياً من مخزن الكروت وتوثيقها في سجل الحركات.
-                  </p>
-                )}
-              </div>
-            )}
             {form.type === "cash" ? <Field label="الحساب المستلم للفاتورة النقدية"><select required value={form.cashAccountId} onChange={event => setForm({ ...form, cashAccountId: event.target.value })} className="form-select"><option value="" disabled>اختر صندوقاً أو بنكاً</option>{(cashQuery.data?.accounts ?? []).map(account => <option key={account.id} value={account.id}>{account.type === "bank" ? "بنك: " : "صندوق: "}{account.name}</option>)}</select></Field> : <div className="rounded-xl border border-[#e7d1a2] bg-[#fffaf0] px-4 py-3 text-sm font-bold text-[#875f13]">الفاتورة الآجلة لا تدخل الصندوق أو البنك عند إصدارها؛ سجّل سند قبض فقط عند استلام المال فعلياً.</div>}
             <div className="grid gap-4 sm:grid-cols-3">
               <Field label="العملة"><select value={form.currencyCode} onChange={event => { const currencyCode = event.target.value as InvoiceForm["currencyCode"]; setForm({ ...form, currencyCode, exchangeRateToBase: currencyCode === "YER" ? "1" : form.exchangeRateToBase }); }} className="form-select"><option value="YER">ريال يمني</option><option value="SAR">ريال سعودي</option><option value="USD">دولار أمريكي</option></select></Field>

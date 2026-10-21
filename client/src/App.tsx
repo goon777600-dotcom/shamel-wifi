@@ -13,7 +13,6 @@ const CashPage = lazy(() => import("@/pages/CashPage"));
 const CategoriesPage = lazy(() => import("@/pages/CategoriesPage"));
 const ClientAccountPage = lazy(() => import("@/pages/ClientAccountPage"));
 const ContactsPage = lazy(() => import("@/pages/ContactsPage"));
-const CardInventoryPage = lazy(() => import("@/pages/CardInventoryPage"));
 const ExpensesPage = lazy(() => import("@/pages/ExpensesPage"));
 const InvoicesPage = lazy(() => import("@/pages/InvoicesPage"));
 const IndividualSubscriptionAccountPage = lazy(() => import("@/pages/IndividualSubscriptionAccountPage"));
@@ -26,8 +25,7 @@ function AppRoutes() {
   return (
     <Switch>
       <Route path="/"><Page><AccountingDashboard /></Page></Route>
-      <Route path="/wifi-cards"><Page><CardInventoryPage /></Page></Route>
-      <Route path="/card-inventory"><Page><CardInventoryPage /></Page></Route>
+      <Route path="/wifi-cards"><Redirect to="/" /></Route>
       <Route path="/mikrotik-settings"><Redirect to="/" /></Route>
       <Route path="/contacts/:contactId"><Page><ClientAccountPage /></Page></Route>
       <Route path="/contacts"><Page><ContactsPage /></Page></Route>

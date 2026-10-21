@@ -44,7 +44,6 @@ import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 const menuItems = [
   { icon: LayoutDashboard, label: "نظرة عامة", path: "/" },
   { icon: UsersRound, label: "العملاء والحسابات", path: "/contacts" },
-  { icon: Ticket, label: "مخزن ومبيعات الكروت", path: "/card-inventory" },
   { icon: FileText, label: "فواتير المبيعات", path: "/invoices" },
   { icon: ReceiptText, label: "سندات القبض", path: "/receipts" },
   { icon: WalletCards, label: "المصروفات والخرجيات", path: "/expenses" },
@@ -135,7 +134,7 @@ function SidebarNavigation() {
     <SidebarMenu>
       <p className="mb-2 px-2 text-[11px] font-bold tracking-wide text-slate-400 group-data-[collapsible=icon]:hidden">إدارة الحسابات</p>
       {menuItems.map(item => {
-        const active = location === item.path || (item.path === "/card-inventory" && location === "/wifi-cards");
+        const active = location === item.path;
         return (
           <SidebarMenuItem key={item.path}>
             <SidebarMenuButton
