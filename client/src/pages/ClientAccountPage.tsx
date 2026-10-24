@@ -29,6 +29,7 @@ import { ClientOperationEditDialog, type ClientOperation } from "@/components/Cl
 import { MerchantTransactionDialog, type MerchantTransactionMode } from "@/components/MerchantTransactionDialog";
 import { MerchantStatementDialog } from "@/components/MerchantStatementDialog";
 import { formatMerchantMoney, formatMerchantDate, merchantWhatsAppMessage } from "@/lib/merchantStatement";
+import { printClientStatement, buildClientLedger, buildClientWhatsAppStatement } from "@/lib/clientAccountStatement";
 import { toast } from "sonner";
 
 function currencyTotals(rows: Array<{ currencyCode: string; amount: unknown }>) {
@@ -64,13 +65,7 @@ export default function ClientAccountPage() {
     onError: error => toast.error(error.message),
   });
 
-const rotateTokenMutation = trpc.accounting.rotateContactPortalToken.useMutation({
-    onSuccess: async () => {
-      await utils.accounting.contactStatement.invalidate({ contactId });
-      toast.success("تم تجديد رابط كشف الحساب وتغيير الرمز بنجاح");
-    },
-    onError: error => toast.error(error.message),
-  });
+
 
   const dueTotals = useMemo(
     () =>
@@ -163,6 +158,27 @@ const rotateTokenMutation = trpc.accounting.rotateContactPortalToken.useMutation
       ? "موظف"
       : "حساب عام";
 
+
+  const clientLedgerData = useMemo(() => {
+    if (!statementQuery.data) return { ledger: [], totalDebit: 0, totalCredit: 0, netBalance: 0 };
+    return buildClientLedger(
+      (statementQuery.data.invoices || []).map(i => ({ ...i, totalAmount: i.totalAmount, dueAmount: i.dueAmount })),
+      (statementQuery.data.receipts || []).map(r => ({ ...r, amount: r.amount }))
+    );
+  }, [statementQuery.data]);
+
+  function handlePrintClientStatement() {
+    if (!statementQuery.data) return;
+    printClientStatement({
+      contact: statementQuery.data.contact,
+      invoices: statementQuery.data.invoices || [],
+      receipts: statementQuery.data.receipts || [],
+      networkName: "شبكة الشامل للواي فاي",
+      phone: "777600474",
+      location: "الإدارة العامة",
+    });
+  }
+
   // WhatsApp Messages
   const accountWhatsapp = whatsappUrl(
     contact.phone,
@@ -172,30 +188,16 @@ const rotateTokenMutation = trpc.accounting.rotateContactPortalToken.useMutation
           totalDebit: merchantTotals.totalDebit,
           netBalance: merchantTotals.netBalance,
         })
-      : accountWhatsAppMessage(contact.name, dueTotals, whatsappSettingsQuery.data?.whatsappTemplate),
+      : buildClientWhatsAppStatement({
+          contactName: contact.name,
+          totalDebit: clientLedgerData.totalDebit,
+          totalCredit: clientLedgerData.totalCredit,
+          netBalance: clientLedgerData.netBalance,
+          lastMovement: timeline[0] ? `${timeline[0].type} (${timeline[0].number}) بمبلغ ${timeline[0].amount} ر.ي` : undefined,
+        }),
   );
 
-  const portalUrl = typeof window !== "undefined"
-    ? `${window.location.origin}/statement/${contact?.portalToken || ""}`
-    : `/statement/${contact?.portalToken || ""}`;
-
-  function copyPortalUrl() {
-    if (!contact?.portalToken) {
-      toast.error("لم يتم العثور على رمز الحساب، جارٍ التحديث...");
-      return;
-    }
-    navigator.clipboard.writeText(portalUrl);
-    toast.success("تم نسخ رابط كشف الحساب بنجاح، يمكنك مشاركته الآن مع العميل");
-  }
-
-  const portalWhatsappUrl = contact?.phone
-    ? whatsappUrl(
-        contact.phone,
-        `مرحباً الأخ / ${contact.name} المحترم،\nيمكنك متابعة كشف حسابك وعملياتك أولاً بأول عبر الرابط المباشر الخاص بك:\n${portalUrl}\n\nتحياتنا، إدارة شبكة الشامل للواي فاي`
-      )
-    : "";
-
-  return (
+    return (
     <div className="space-y-6">
       <PageHeader
         title={`حساب ${contact.name}`}
@@ -300,6 +302,14 @@ const rotateTokenMutation = trpc.accounting.rotateContactPortalToken.useMutation
                   <FilePlus2 className="ml-1.5 h-4 w-4" />
                   فاتورة نقدية
                 </Button>
+                <Button
+                  variant="outline"
+                  onClick={handlePrintClientStatement}
+                  className="border-[#0a6372] text-[#0a6372] hover:bg-[#eff8f5] font-bold"
+                >
+                  <Printer className="ml-1.5 h-4 w-4" />
+                  كشف حساب (PDF)
+                </Button>
               </>
             )}
 
@@ -311,7 +321,7 @@ const rotateTokenMutation = trpc.accounting.rotateContactPortalToken.useMutation
               >
                 <a href={accountWhatsapp} target="_blank" rel="noreferrer">
                   <MessageCircle className="ml-1.5 h-4 w-4" />
-                  واتساب {isMerchant ? "التاجر" : "العميل"}
+                  {isMerchant ? "واتساب التاجر" : "إرسال كشف الحساب بالواتساب"}
                 </a>
               </Button>
             ) : (
@@ -320,80 +330,6 @@ const rotateTokenMutation = trpc.accounting.rotateContactPortalToken.useMutation
                 أضف رقم واتساب
               </Button>
             )}
-          </div>
-        </div>
-      </section>
-
-      {/* Client Public Statement Portal Link Card */}
-      <section className="rounded-2xl border border-sky-200 bg-gradient-to-r from-sky-50/70 via-white to-teal-50/50 p-4 sm:p-5 shadow-sm">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-600 text-white shadow-sm">
-                <Globe className="h-4 w-4" />
-              </span>
-              <h3 className="font-extrabold text-[#083f4c] text-base">
-                رابط كشف الحساب المباشر للعميل (للعرض والمتابعة فقط)
-              </h3>
-            </div>
-            <p className="text-xs text-slate-500 leading-relaxed max-w-2xl">
-              رابط مشفر وخاص بصاحب الحساب يتيح له مراقبة الرصيد والحركات من هاتفه دون إمكانية التعديل، ويعمل في الوقت الفعلي.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={copyPortalUrl}
-              className="h-9 rounded-xl border-sky-300 bg-white font-bold text-sky-900 hover:bg-sky-50 text-xs shadow-sm"
-            >
-              <Copy className="ml-1.5 h-3.5 w-3.5 text-sky-700" />
-              نسخ الرابط
-            </Button>
-
-            {portalWhatsappUrl ? (
-              <Button
-                asChild
-                size="sm"
-                className="h-9 rounded-xl bg-[#25D366] hover:bg-[#20ba5a] font-bold text-white text-xs shadow-sm"
-              >
-                <a href={portalWhatsappUrl} target="_blank" rel="noreferrer">
-                  <MessageCircle className="ml-1.5 h-3.5 w-3.5" />
-                  إرسال الرابط بالواتساب
-                </a>
-              </Button>
-            ) : null}
-
-            <Button
-              asChild
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 rounded-xl border-slate-200 bg-white font-bold text-slate-700 hover:bg-slate-50 text-xs shadow-sm"
-            >
-              <a href={portalUrl} target="_blank" rel="noreferrer">
-                <ExternalLink className="ml-1.5 h-3.5 w-3.5 text-slate-500" />
-                معاينة الرابط
-              </a>
-            </Button>
-
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                if (confirm("هل أنت متأكد من تجديد رمز الرابط؟ الرابط القديم سيتوقف عن العمل.")) {
-                  rotateTokenMutation.mutate({ contactId: contact.id });
-                }
-              }}
-              disabled={rotateTokenMutation.isPending}
-              className="h-9 rounded-xl text-slate-400 hover:text-amber-700 hover:bg-amber-50 text-xs"
-              title="تجديد رمز الرابط وإلغاء القديم"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${rotateTokenMutation.isPending ? "animate-spin" : ""}`} />
-            </Button>
           </div>
         </div>
       </section>
