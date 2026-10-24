@@ -139,7 +139,17 @@ export function IndividualSubscriptionFinancePanel({ account, subscriptions, cha
 
   function submitCharge(event: FormEvent) {
     event.preventDefault();
-    createChargeMutation.mutate({ accountId: account.id, subscriptionId: chargeForm.subscriptionId ? Number(chargeForm.subscriptionId) : undefined, description: chargeForm.description, currencyCode: chargeForm.currencyCode, amount: chargeForm.amount, initialPaidAmount: "0", chargedAt: new Date(), notes: chargeForm.notes || undefined });
+    const desc = chargeForm.notes.trim() || "اشتراك";
+    createChargeMutation.mutate({
+      accountId: account.id,
+      subscriptionId: chargeForm.subscriptionId ? Number(chargeForm.subscriptionId) : undefined,
+      description: desc,
+      currencyCode: chargeForm.currencyCode,
+      amount: chargeForm.amount,
+      initialPaidAmount: "0",
+      chargedAt: new Date(),
+      notes: chargeForm.notes.trim() || undefined,
+    });
   }
   function submitChargeEdit(event: FormEvent) {
     event.preventDefault();
@@ -191,7 +201,63 @@ export function IndividualSubscriptionFinancePanel({ account, subscriptions, cha
     {payments.length ? <div className="border-t border-emerald-100 bg-emerald-50/50 p-4"><h3 className="flex items-center gap-2 font-extrabold text-emerald-800"><CheckCircle2 className="h-5 w-5" />المبالغ المقبوضة — سندات القبض</h3><div className="mt-3 space-y-2">{payments.slice(0, 5).map(payment => <div key={payment.id} className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm"><span className="font-extrabold text-emerald-800">مقبوض · سند #{payment.id} — {payment.amount} {currencyLabel[payment.currencyCode as keyof typeof currencyLabel] ?? payment.currencyCode}</span><span className="text-xs text-emerald-700">{new Date(payment.paymentDate).toLocaleDateString("ar-YE")}{payment.notes ? ` · ${payment.notes}` : ""}</span></div>)}</div></div> : null}
     {adjustments.length ? <div className="border-t border-amber-200 bg-amber-50/60 p-4"><h3 className="flex items-center gap-2 font-extrabold text-amber-800"><BadgeMinus className="h-5 w-5" />عمليات الخصم</h3><div className="mt-3 space-y-2">{adjustments.slice(0, 5).map(adjustment => <div key={adjustment.id} className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between"><div><span className="font-extrabold text-amber-800">خصم · {adjustment.amount} {currencyLabel[adjustment.currencyCode as keyof typeof currencyLabel] ?? adjustment.currencyCode}</span><span className="mr-2 text-xs text-amber-700">{new Date(adjustment.adjustmentDate).toLocaleDateString("ar-YE")}{adjustment.notes ? ` · ${adjustment.notes}` : ""}</span></div><Button size="sm" variant="outline" disabled={account.status === "closed"} onClick={() => beginDiscountEdit(adjustment)} className="border-amber-500 bg-white text-amber-800 hover:bg-amber-100"><Pencil className="ml-1.5 h-3.5 w-3.5" />تعديل الخصم</Button></div>)}</div></div> : null}
 
-    <Dialog open={chargeOpen} onOpenChange={setChargeOpen}><DialogContent dir="rtl" className="max-h-[92vh] overflow-y-auto sm:max-w-xl"><DialogHeader><DialogTitle className="text-xl font-black text-[#083f4c]">تسجيل إضافة اشتراك على العميل</DialogTitle><DialogDescription>أدخل مبلغ الاشتراك والبيان فقط. يتم تقييد المبلغ على الحساب كاشتراك فعّال مباشرة.</DialogDescription></DialogHeader><form onSubmit={submitCharge} className="space-y-4 py-2"><div className="grid gap-4 sm:grid-cols-2"><Field label="مبلغ الاشتراك"><Input required autoFocus inputMode="decimal" value={chargeForm.amount} onChange={event => setChargeForm(current => ({ ...current, amount: event.target.value }))} placeholder="مثال: 20000" className="h-11 text-base font-extrabold text-[#083f4c]" /></Field><Field label="العملة"><select value={chargeForm.currencyCode} onChange={event => setChargeForm(current => ({ ...current, currencyCode: event.target.value as typeof current.currencyCode }))} className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-[#0a6372]"><option value="YER">ريال يمني (YER)</option><option value="SAR">ريال سعودي (SAR)</option><option value="USD">دولار أمريكي (USD)</option></select></Field><Field label="اسم الخدمة / الباقة"><Input required value={chargeForm.description} onChange={event => setChargeForm(current => ({ ...current, description: event.target.value }))} placeholder="اشتراك إنترنت" className="h-10 font-bold" /></Field><Field label="حالة الاشتراك"><div className="flex h-10 items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-sm font-extrabold text-emerald-800"><span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />فعّال</span><span className="text-xs text-emerald-600">نشط في النظام</span></div></Field></div><Field label="تفاصيل وملاحظات (اختياري)"><Textarea value={chargeForm.notes} onChange={event => setChargeForm(current => ({ ...current, notes: event.target.value }))} placeholder="أي تفاصيل أو ملاحظات إضافية على الاشتراك..." rows={3} /></Field><DialogFooter className="gap-2 sm:gap-0"><Button type="button" variant="outline" onClick={() => setChargeOpen(false)}>إلغاء</Button><Button type="submit" disabled={createChargeMutation.isPending} className="bg-[#0a6372] font-bold hover:bg-[#084e5a]">{createChargeMutation.isPending ? "جارٍ الحفظ..." : "حفظ الاشتراك وإشعار المشترك"}</Button></DialogFooter></form></DialogContent></Dialog>
+    <Dialog open={chargeOpen} onOpenChange={setChargeOpen}>
+      <DialogContent dir="rtl" className="max-h-[92vh] overflow-y-auto sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-black text-[#083f4c]">تسجيل مبلغ على العميل</DialogTitle>
+          <DialogDescription>أدخل مبلغ الاشتراك والملاحظة فقط ليتم تقييد المبلغ على الحساب مباشرة.</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submitCharge} className="space-y-4 py-2">
+          <div className="grid gap-3 sm:grid-cols-[1fr_140px]">
+            <Field label="المبلغ">
+              <Input
+                required
+                autoFocus
+                inputMode="decimal"
+                value={chargeForm.amount}
+                onChange={event => setChargeForm(current => ({ ...current, amount: event.target.value }))}
+                placeholder="مثال: 20000"
+                className="h-11 text-base font-extrabold text-[#083f4c]"
+              />
+            </Field>
+            <Field label="العملة">
+              <select
+                value={chargeForm.currencyCode}
+                onChange={event => setChargeForm(current => ({ ...current, currencyCode: event.target.value as typeof current.currencyCode }))}
+                className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-[#0a6372]"
+              >
+                <option value="YER">ريال يمني (YER)</option>
+                <option value="SAR">ريال سعودي (SAR)</option>
+                <option value="USD">دولار أمريكي (USD)</option>
+              </select>
+            </Field>
+          </div>
+
+          <Field label="ملاحظة / البيان">
+            <Textarea
+              value={chargeForm.notes}
+              onChange={event => setChargeForm(current => ({ ...current, notes: event.target.value }))}
+              placeholder="اكتب ملاحظة أو بيان العملية هنا..."
+              rows={3}
+              className="text-sm font-medium"
+            />
+          </Field>
+
+          <DialogFooter className="gap-2 sm:gap-0 pt-2">
+            <Button type="button" variant="outline" onClick={() => setChargeOpen(false)}>
+              إلغاء
+            </Button>
+            <Button
+              type="submit"
+              disabled={createChargeMutation.isPending || !chargeForm.amount}
+              className="bg-[#0a6372] font-bold hover:bg-[#084e5a]"
+            >
+              {createChargeMutation.isPending ? "جارٍ الحفظ..." : "حفظ المبلغ على الحساب"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
 
     <Dialog open={chargeEditOpen} onOpenChange={setChargeEditOpen}><DialogContent dir="rtl" className="sm:max-w-xl"><DialogHeader><DialogTitle>تعديل عملية المبلغ</DialogTitle><DialogDescription>يمكن تعديل المبلغ والوصف والتاريخ، بشرط ألا يصبح المبلغ أقل من المقبوض أو الخصم المسجل.</DialogDescription></DialogHeader><form onSubmit={submitChargeEdit} className="space-y-4 py-2"><div className="grid gap-4 sm:grid-cols-2"><Field label="وصف العملية"><Input required value={chargeEditForm.description} onChange={event => setChargeEditForm(current => ({ ...current, description: event.target.value }))} /></Field><Field label="المبلغ"><Input required inputMode="decimal" value={chargeEditForm.amount} onChange={event => setChargeEditForm(current => ({ ...current, amount: event.target.value }))} /></Field><Field label="تاريخ العملية"><Input required type="date" value={chargeEditForm.chargedAt} onChange={event => setChargeEditForm(current => ({ ...current, chargedAt: event.target.value }))} /></Field></div><Field label="ملاحظات"><Textarea value={chargeEditForm.notes} onChange={event => setChargeEditForm(current => ({ ...current, notes: event.target.value }))} placeholder="اختياري" /></Field><DialogFooter className="gap-2 sm:gap-0"><Button type="button" variant="outline" onClick={() => setChargeEditOpen(false)}>إلغاء</Button><Button type="submit" disabled={updateChargeMutation.isPending} className="bg-[#0a6372] hover:bg-[#084e5a]">{updateChargeMutation.isPending ? "جارٍ الحفظ..." : "حفظ التعديل"}</Button></DialogFooter></form></DialogContent></Dialog>
 
