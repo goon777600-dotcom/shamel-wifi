@@ -44,6 +44,9 @@ async function startServer() {
     const options = getSessionCookieOptions(req);
     return { ...options, sameSite: options.secure ? "none" as const : "lax" as const };
   };
+  app.get("/api/health", (_req, res) => {
+    res.status(200).send("OK");
+  });
   app.get("/api/app-lock/status", async (req, res) => {
     res.json({ unlocked: await isAppLockRequestUnlocked(req) });
   });

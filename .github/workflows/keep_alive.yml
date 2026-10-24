@@ -1,0 +1,15 @@
+name: Keep Alive Render Service
+
+on:
+  schedule:
+    # Run every 10 minutes to prevent Render free tier from sleeping
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  keep_alive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Service Health Endpoint
+        run: |
+          curl -s -f -m 30 https://shamel-wifi.onrender.com/api/health || true
