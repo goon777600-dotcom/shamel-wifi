@@ -171,12 +171,13 @@ export const contacts = mysqlTable(
       .default("customer"),
     phone: varchar("phone", { length: 32 }),
     address: varchar("address", { length: 300 }),
+    portalToken: varchar("portalToken", { length: 64 }),
     notes: text("notes"),
     isActive: boolean("isActive").default(true).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
-  table => [index("contacts_type_idx").on(table.type), index("contacts_name_idx").on(table.name)],
+  table => [index("contacts_type_idx").on(table.type), index("contacts_name_idx").on(table.name), uniqueIndex("contacts_portal_token_idx").on(table.portalToken)],
 );
 
 export const servicePackages = mysqlTable(

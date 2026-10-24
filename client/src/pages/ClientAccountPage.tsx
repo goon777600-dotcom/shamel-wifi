@@ -8,6 +8,10 @@ import {
   ArrowRight,
   ArrowUpRight,
   Building2,
+  Copy,
+  ExternalLink,
+  Globe,
+  RefreshCw,
   FilePlus2,
   HandCoins,
   MessageCircle,
@@ -163,6 +167,34 @@ export default function ClientAccountPage() {
       : accountWhatsAppMessage(contact.name, dueTotals, whatsappSettingsQuery.data?.whatsappTemplate),
   );
 
+  const rotateTokenMutation = trpc.accounting.rotateContactPortalToken.useMutation({
+    onSuccess: async () => {
+      await utils.accounting.contactStatement.invalidate({ contactId });
+      toast.success("تم تجديد رابط كشف الحساب وتغيير الرمز بنجاح");
+    },
+    onError: error => toast.error(error.message),
+  });
+
+  const portalUrl = typeof window !== "undefined"
+    ? `${window.location.origin}/statement/${contact?.portalToken || ""}`
+    : `/statement/${contact?.portalToken || ""}`;
+
+  function copyPortalUrl() {
+    if (!contact?.portalToken) {
+      toast.error("لم يتم العثور على رمز الحساب، جارٍ التحديث...");
+      return;
+    }
+    navigator.clipboard.writeText(portalUrl);
+    toast.success("تم نسخ رابط كشف الحساب بنجاح، يمكنك مشاركته الآن مع العميل");
+  }
+
+  const portalWhatsappUrl = contact?.phone
+    ? whatsappUrl(
+        contact.phone,
+        `مرحباً الأخ / ${contact.name} المحترم،\nيمكنك متابعة كشف حسابك وعملياتك أولاً بأول عبر الرابط المباشر الخاص بك:\n${portalUrl}\n\nتحياتنا، إدارة شبكة الشامل للواي فاي`
+      )
+    : "";
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -288,6 +320,80 @@ export default function ClientAccountPage() {
                 أضف رقم واتساب
               </Button>
             )}
+          </div>
+        </div>
+      </section>
+
+      {/* Client Public Statement Portal Link Card */}
+      <section className="rounded-2xl border border-sky-200 bg-gradient-to-r from-sky-50/70 via-white to-teal-50/50 p-4 sm:p-5 shadow-sm">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-600 text-white shadow-sm">
+                <Globe className="h-4 w-4" />
+              </span>
+              <h3 className="font-extrabold text-[#083f4c] text-base">
+                رابط كشف الحساب المباشر للعميل (للعرض والمتابعة فقط)
+              </h3>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed max-w-2xl">
+              رابط مشفر وخاص بصاحب الحساب يتيح له مراقبة الرصيد والحركات من هاتفه دون إمكانية التعديل، ويعمل في الوقت الفعلي.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={copyPortalUrl}
+              className="h-9 rounded-xl border-sky-300 bg-white font-bold text-sky-900 hover:bg-sky-50 text-xs shadow-sm"
+            >
+              <Copy className="ml-1.5 h-3.5 w-3.5 text-sky-700" />
+              نسخ الرابط
+            </Button>
+
+            {portalWhatsappUrl ? (
+              <Button
+                asChild
+                size="sm"
+                className="h-9 rounded-xl bg-[#25D366] hover:bg-[#20ba5a] font-bold text-white text-xs shadow-sm"
+              >
+                <a href={portalWhatsappUrl} target="_blank" rel="noreferrer">
+                  <MessageCircle className="ml-1.5 h-3.5 w-3.5" />
+                  إرسال الرابط بالواتساب
+                </a>
+              </Button>
+            ) : null}
+
+            <Button
+              asChild
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 rounded-xl border-slate-200 bg-white font-bold text-slate-700 hover:bg-slate-50 text-xs shadow-sm"
+            >
+              <a href={portalUrl} target="_blank" rel="noreferrer">
+                <ExternalLink className="ml-1.5 h-3.5 w-3.5 text-slate-500" />
+                معاينة الرابط
+              </a>
+            </Button>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                if (confirm("هل أنت متأكد من تجديد رمز الرابط؟ الرابط القديم سيتوقف عن العمل.")) {
+                  rotateTokenMutation.mutate({ contactId: contact.id });
+                }
+              }}
+              disabled={rotateTokenMutation.isPending}
+              className="h-9 rounded-xl text-slate-400 hover:text-amber-700 hover:bg-amber-50 text-xs"
+              title="تجديد رمز الرابط وإلغاء القديم"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${rotateTokenMutation.isPending ? "animate-spin" : ""}`} />
+            </Button>
           </div>
         </div>
       </section>

@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { and, asc, desc, eq, gte, inArray, lte, ne, sql } from "drizzle-orm";
 import {
   accountCategories,
@@ -291,11 +292,16 @@ async function getActiveCurrency(db: any, currencyCode: string) {
 
 async function getActiveContact(db: any, contactId: number) {
   const result = await db
-    .select({ id: contacts.id, name: contacts.name, type: contacts.type, phone: contacts.phone, address: contacts.address, notes: contacts.notes })
+    .select({ id: contacts.id, name: contacts.name, type: contacts.type, phone: contacts.phone, address: contacts.address, notes: contacts.notes, portalToken: contacts.portalToken })
     .from(contacts)
     .where(and(eq(contacts.id, contactId), eq(contacts.isActive, true)))
     .limit(1);
   if (!result[0]) throw new Error("الحساب أو العميل المحدد غير متاح");
+  if (!result[0].portalToken) {
+    const token = "shm_" + crypto.randomBytes(12).toString("hex");
+    await db.update(contacts).set({ portalToken: token }).where(eq(contacts.id, contactId));
+    result[0].portalToken = token;
+  }
   return result[0];
 }
 
@@ -394,12 +400,14 @@ export async function createContact(
   input: { name: string; type: ContactType; phone?: string; address?: string; notes?: string },
 ) {
   const db = await requireDb();
+  const portalToken = "shm_" + crypto.randomBytes(12).toString("hex");
   const result = await db.insert(contacts).values({
     name: input.name.trim(),
     type: input.type,
     phone: input.phone?.trim() || null,
     address: input.address?.trim() || null,
     notes: input.notes?.trim() || null,
+    portalToken,
   });
   const id = Number(result[0].insertId);
   await writeAudit(db, userId, "create", "contact", id, { name: input.name, type: input.type });
@@ -2275,4 +2283,30 @@ export async function getContactStatement(contactId: number) {
       netBalance: merchantTxData.netBalance,
     },
   };
+}
+
+export async function getContactByPortalToken(token: string) {
+  const db = await requireDb();
+  const cleanToken = (token || "").trim();
+  if (!cleanToken) {
+    throw new Error("رمز كشف الحساب غير صحيح أو مفقود");
+  }
+  const result = await db
+    .select({ id: contacts.id })
+    .from(contacts)
+    .where(and(eq(contacts.portalToken, cleanToken), eq(contacts.isActive, true)))
+    .limit(1);
+  if (!result[0]) {
+    throw new Error("رابط كشف الحساب غير موجود أو غير صالح");
+  }
+  return getContactStatement(result[0].id);
+}
+
+export async function rotateContactPortalToken(userId: number, contactId: number) {
+  const db = await requireDb();
+  await getActiveContact(db, contactId);
+  const newToken = "shm_" + crypto.randomBytes(12).toString("hex");
+  await db.update(contacts).set({ portalToken: newToken }).where(eq(contacts.id, contactId));
+  await writeAudit(db, userId, "update", "contact_portal_token", contactId, { newPortalToken: newToken });
+  return { portalToken: newToken };
 }

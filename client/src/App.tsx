@@ -20,11 +20,22 @@ const IndividualSubscriptionsPage = lazy(() => import("@/pages/IndividualSubscri
 const ReceiptsPage = lazy(() => import("@/pages/ReceiptsPage"));
 const ReportsPage = lazy(() => import("@/pages/ReportsPage"));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
+const PublicStatementPage = lazy(() => import("@/pages/PublicStatementPage"));
 
 function AppRoutes() {
   return (
     <Switch>
       <Route path="/"><Page><AccountingDashboard /></Page></Route>
+      <Route path="/statement/:token">
+        <Suspense fallback={<div className="min-h-screen bg-[#f1f6f5] flex items-center justify-center p-4 font-bold text-slate-500">جارٍ التحميل...</div>}>
+          <PublicStatementPage />
+        </Suspense>
+      </Route>
+      <Route path="/portal/statement">
+        <Suspense fallback={<div className="min-h-screen bg-[#f1f6f5] flex items-center justify-center p-4 font-bold text-slate-500">جارٍ التحميل...</div>}>
+          <PublicStatementPage />
+        </Suspense>
+      </Route>
       <Route path="/wifi-cards"><Redirect to="/" /></Route>
       <Route path="/mikrotik-settings"><Redirect to="/" /></Route>
       <Route path="/contacts/:contactId"><Page><ClientAccountPage /></Page></Route>

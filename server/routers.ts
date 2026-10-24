@@ -24,6 +24,8 @@ import {
   listMerchantTransactions,
   getCashSummary,
   getContactStatement,
+  getContactByPortalToken,
+  rotateContactPortalToken,
   getDashboardSummary,
   getFinancialReport,
   getInvoiceDocument,
@@ -477,6 +479,12 @@ export const appRouter = router({
     contactStatement: adminProcedure
       .input(z.object({ contactId: z.number().int().positive() }))
       .query(({ input }) => getContactStatement(input.contactId)),
+    publicContactStatement: publicProcedure
+      .input(z.object({ token: z.string().trim().min(1) }))
+      .query(({ input }) => getContactByPortalToken(input.token)),
+    rotateContactPortalToken: adminProcedure
+      .input(z.object({ contactId: z.number().int().positive() }))
+      .mutation(({ ctx, input }) => rotateContactPortalToken(ctx.user.id, input.contactId)),
     merchantTransactions: adminProcedure
       .input(z.object({ contactId: z.number().int().positive() }))
       .query(({ input }) => listMerchantTransactions(input.contactId)),
