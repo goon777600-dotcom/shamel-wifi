@@ -64,6 +64,14 @@ export default function ClientAccountPage() {
     onError: error => toast.error(error.message),
   });
 
+const rotateTokenMutation = trpc.accounting.rotateContactPortalToken.useMutation({
+    onSuccess: async () => {
+      await utils.accounting.contactStatement.invalidate({ contactId });
+      toast.success("تم تجديد رابط كشف الحساب وتغيير الرمز بنجاح");
+    },
+    onError: error => toast.error(error.message),
+  });
+
   const dueTotals = useMemo(
     () =>
       currencyTotals(
@@ -166,14 +174,6 @@ export default function ClientAccountPage() {
         })
       : accountWhatsAppMessage(contact.name, dueTotals, whatsappSettingsQuery.data?.whatsappTemplate),
   );
-
-  const rotateTokenMutation = trpc.accounting.rotateContactPortalToken.useMutation({
-    onSuccess: async () => {
-      await utils.accounting.contactStatement.invalidate({ contactId });
-      toast.success("تم تجديد رابط كشف الحساب وتغيير الرمز بنجاح");
-    },
-    onError: error => toast.error(error.message),
-  });
 
   const portalUrl = typeof window !== "undefined"
     ? `${window.location.origin}/statement/${contact?.portalToken || ""}`
