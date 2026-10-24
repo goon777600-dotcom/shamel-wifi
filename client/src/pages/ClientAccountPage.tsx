@@ -8,10 +8,6 @@ import {
   ArrowRight,
   ArrowUpRight,
   Building2,
-  Copy,
-  ExternalLink,
-  Globe,
-  RefreshCw,
   FilePlus2,
   HandCoins,
   MessageCircle,
@@ -29,7 +25,6 @@ import { ClientOperationEditDialog, type ClientOperation } from "@/components/Cl
 import { MerchantTransactionDialog, type MerchantTransactionMode } from "@/components/MerchantTransactionDialog";
 import { MerchantStatementDialog } from "@/components/MerchantStatementDialog";
 import { formatMerchantMoney, formatMerchantDate, merchantWhatsAppMessage } from "@/lib/merchantStatement";
-import { printClientStatement, buildClientLedger, buildClientWhatsAppStatement } from "@/lib/clientAccountStatement";
 import { toast } from "sonner";
 
 function currencyTotals(rows: Array<{ currencyCode: string; amount: unknown }>) {
@@ -64,8 +59,6 @@ export default function ClientAccountPage() {
     },
     onError: error => toast.error(error.message),
   });
-
-
 
   const dueTotals = useMemo(
     () =>
@@ -158,27 +151,6 @@ export default function ClientAccountPage() {
       ? "موظف"
       : "حساب عام";
 
-
-  const clientLedgerData = useMemo(() => {
-    if (!statementQuery.data) return { ledger: [], totalDebit: 0, totalCredit: 0, netBalance: 0 };
-    return buildClientLedger(
-      (statementQuery.data.invoices || []).map(i => ({ ...i, totalAmount: i.totalAmount, dueAmount: i.dueAmount })),
-      (statementQuery.data.receipts || []).map(r => ({ ...r, amount: r.amount }))
-    );
-  }, [statementQuery.data]);
-
-  function handlePrintClientStatement() {
-    if (!statementQuery.data) return;
-    printClientStatement({
-      contact: statementQuery.data.contact,
-      invoices: statementQuery.data.invoices || [],
-      receipts: statementQuery.data.receipts || [],
-      networkName: "شبكة الشامل للواي فاي",
-      phone: "777600474",
-      location: "الإدارة العامة",
-    });
-  }
-
   // WhatsApp Messages
   const accountWhatsapp = whatsappUrl(
     contact.phone,
@@ -188,16 +160,10 @@ export default function ClientAccountPage() {
           totalDebit: merchantTotals.totalDebit,
           netBalance: merchantTotals.netBalance,
         })
-      : buildClientWhatsAppStatement({
-          contactName: contact.name,
-          totalDebit: clientLedgerData.totalDebit,
-          totalCredit: clientLedgerData.totalCredit,
-          netBalance: clientLedgerData.netBalance,
-          lastMovement: timeline[0] ? `${timeline[0].type} (${timeline[0].number}) بمبلغ ${timeline[0].amount} ر.ي` : undefined,
-        }),
+      : accountWhatsAppMessage(contact.name, dueTotals, whatsappSettingsQuery.data?.whatsappTemplate),
   );
 
-    return (
+  return (
     <div className="space-y-6">
       <PageHeader
         title={`حساب ${contact.name}`}
@@ -302,14 +268,6 @@ export default function ClientAccountPage() {
                   <FilePlus2 className="ml-1.5 h-4 w-4" />
                   فاتورة نقدية
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={handlePrintClientStatement}
-                  className="border-[#0a6372] text-[#0a6372] hover:bg-[#eff8f5] font-bold"
-                >
-                  <Printer className="ml-1.5 h-4 w-4" />
-                  كشف حساب (PDF)
-                </Button>
               </>
             )}
 
@@ -321,7 +279,7 @@ export default function ClientAccountPage() {
               >
                 <a href={accountWhatsapp} target="_blank" rel="noreferrer">
                   <MessageCircle className="ml-1.5 h-4 w-4" />
-                  {isMerchant ? "واتساب التاجر" : "إرسال كشف الحساب بالواتساب"}
+                  واتساب {isMerchant ? "التاجر" : "العميل"}
                 </a>
               </Button>
             ) : (
